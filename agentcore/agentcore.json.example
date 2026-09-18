@@ -1,0 +1,90 @@
+{
+  "$schema": "https://schema.agentcore.aws.dev/v1/agentcore.json",
+  "name": "governed-agentic-companion",
+  "version": 1,
+  "managedBy": "CDK",
+  "tags": {
+    "project": "governed-agentic-companion"
+  },
+  "_comment": "REFERENCE TEMPLATE. Copy to a real (gitignored) agentcore.json and fill placeholders. Two runtimes are defined: `orchestrator` (the /invocations face) and `mcp-runtime` (the stateless /mcp face the Gateway targets). Deploy the MCP runtime when you want an AgentCore Gateway to front the engine directly; the /invocations runtime is enough for the local stdio bridge front door. buildContextPath is the REPO ROOT so the single-source engine (agents/, governance/, knowledge/) is COPY-able directly; the CLI resolves it relative to the CLI project dir.",
+  "runtimes": [
+    {
+      "name": "orchestrator",
+      "build": "Container",
+      "type": "byo",
+      "entrypoint": "agentcore/app/orchestrator/runtime_entrypoint.py",
+      "codeLocation": "agentcore/app/orchestrator/",
+      "dockerfile": "agentcore/app/orchestrator/Dockerfile",
+      "buildContextPath": "..",
+      "runtimeVersion": "PYTHON_3_12",
+      "networkMode": "PUBLIC",
+      "protocol": "HTTP",
+      "_comment_authorizer": "Inbound auth. Set authorizerType CUSTOM_JWT + authorizerConfiguration.customJwtAuthorizer to require an enterprise-IdP JWT. The platform validates the token (issuer, audience/allowed-clients, signature, expiry) BEFORE the request reaches the container. NOTE: in the verified topology the platform validates at the edge and does NOT forward the token, so the container runs GAC_INBOUND_AUTH=none; set it to jwt only if your platform forwards the token (the in-code identity seam is then the defense-in-depth second check). discoveryUrl/allowedClients embed the IdP tenant, so they belong in the gitignored config.",
+      "authorizerType_example": "CUSTOM_JWT",
+      "authorizerConfiguration_example": {
+        "customJwtAuthorizer": {
+          "discoveryUrl": "https://<your-idp-issuer>/.well-known/openid-configuration",
+          "allowedClients": ["<your-runtime-client-id>"]
+        }
+      },
+      "_comment_envVars": "GAC_KNOWLEDGE_STORE + GAC_KB_BUCKET/GAC_KB_PREFIX persist the evolving KB (candidates/learnings/freshness) to S3 (the bucket embeds the account id). GAC_KB_OVERLAY=s3 + GAC_KB_OVERLAY_PREFIX enable the Tier-B curated overlay read on top of the baked-in Tier-A baseline; Tier-A locked constraints stay image-only and the overlay cannot touch them. GAC_INBOUND_AUTH controls the in-code identity seam (default none = platform validates at the edge).",
+      "envVars_example": [
+        { "name": "GAC_KNOWLEDGE_STORE", "value": "s3" },
+        { "name": "GAC_KB_BUCKET", "value": "<your-kb-bucket-name>" },
+        { "name": "GAC_KB_PREFIX", "value": "kb" },
+        { "name": "GAC_KB_OVERLAY", "value": "s3" },
+        { "name": "GAC_KB_OVERLAY_PREFIX", "value": "kb/curated" },
+        { "name": "GAC_INBOUND_AUTH", "value": "none" }
+      ]
+    },
+    {
+      "name": "mcp-runtime",
+      "build": "Container",
+      "type": "byo",
+      "entrypoint": "agentcore/app/mcp_runtime/runtime_mcp_entrypoint.py",
+      "codeLocation": "agentcore/app/mcp_runtime/",
+      "dockerfile": "agentcore/app/mcp_runtime/Dockerfile",
+      "buildContextPath": "..",
+      "runtimeVersion": "PYTHON_3_12",
+      "networkMode": "PUBLIC",
+      "_comment_protocol": "MCP runtime serves the stateless streamable-HTTP MCP contract on port 8000 at /mcp. Deploy as protocol MCP; the platform health-checks port 8000. This is the target of the Gateway http-runtime target below.",
+      "protocol": "MCP",
+      "envVars_example": [
+        { "name": "GAC_KNOWLEDGE_STORE", "value": "s3" },
+        { "name": "GAC_KB_BUCKET", "value": "<your-kb-bucket-name>" },
+        { "name": "GAC_KB_OVERLAY", "value": "s3" },
+        { "name": "GAC_KB_OVERLAY_PREFIX", "value": "kb/curated" }
+      ]
+    }
+  ],
+  "_comment_gateways": "Stand up a protocol-type None Gateway with an http-runtime target that resolves (by ARN) to the mcp-runtime above. Inbound = CUSTOM_JWT (the builder's enterprise-IdP JWT). Outbound to the runtime = OAuth M2M (the gateway's own client_credentials grant + a resource-server scope, e.g. companion-gateway/invoke). Do NOT use a protocol-type MCP gateway — it rejects a runtime target. The full path-based invocations URL becomes GAC_GATEWAY_URL for the front doors. See agentcore/README.md.",
+  "agentCoreGateways_example": [
+    {
+      "name": "companion-gateway",
+      "protocolType": "None",
+      "authorizerType": "CUSTOM_JWT",
+      "authorizerConfiguration": {
+        "customJwtAuthorizer": {
+          "discoveryUrl": "https://<your-idp-issuer>/.well-known/openid-configuration",
+          "allowedClients": ["<your-frontdoor-client-id>"]
+        }
+      },
+      "targets": [
+        {
+          "name": "companion-engine",
+          "type": "http-runtime",
+          "runtimeRef": "mcp-runtime",
+          "outboundAuth": {
+            "type": "oauth-m2m",
+            "credentialProviderRef": "companion-m2m"
+          }
+        }
+      ]
+    }
+  ],
+  "memories": [],
+  "knowledgeBases": [],
+  "credentials": [],
+  "evaluators": [],
+  "policyEngines": []
+}

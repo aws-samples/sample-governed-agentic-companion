@@ -1,0 +1,11 @@
+# Tier-A (LOCKED) — platform deployment policy. Code-reviewed only; never an S3 overlay.
+summary: >-
+  Deployment is human-owned in every environment, including non-production. The companion
+  produces the deployment artifact and the runbook; a human reviews and executes it. There is
+  no confidence threshold, automation flag, or "trusted environment" exception that lets an
+  agent deploy, apply, promote, restart, or mutate an environment (Tenet 1).
+locked: true
+rules:
+  - "Agents generate deploy/mutate commands as reviewable artifacts; they never run them."
+  - "Promotion follows the environment order and is executed by a human at each gate."
+  - "Rollback is a documented, human-run procedure."

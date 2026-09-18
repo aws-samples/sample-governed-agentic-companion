@@ -1,0 +1,29 @@
+# Copy to config.yaml (gitignored) and adjust. Defaults are deterministic — no AWS, no LLM.
+system:
+  name: "governed-agentic-companion"
+  version: "1.0.0"
+
+# Execution tiers. Tier 1 (deterministic) always works. Tier 2/3 are opt-in.
+llm:
+  provider: "none"          # none | ollama | bedrock
+  # ollama:
+  #   model: "llama3:8b"
+  # bedrock:
+  #   region: "<region>"
+  #   model_id: "<bedrock-model-id>"
+  resilience:
+    max_retries: 3
+    circuit_breaker: true   # degrade to deterministic under sustained cloud failure
+
+# Confidence bar for presenting LLM output as fact (Tenet 4). Below this, exploration-zone
+# answers are BLOCKED by the gate.
+grounding:
+  fact_threshold: 0.95
+
+# Tier-B curated KB overlay (opt-in; fails open to the in-repo baseline). See agents/kb_overlay.py.
+knowledge:
+  overlay: "none"           # none | s3
+  # s3:
+  #   bucket: "<kb-bucket>"        # bucket name embeds the account id — keep out of git
+  #   overlay_key: "kb/curated/overlay.json"
+  #   region: "<region>"

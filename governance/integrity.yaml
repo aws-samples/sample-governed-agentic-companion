@@ -1,0 +1,10 @@
+principles:
+  file: PRINCIPLES.md
+  sha256_hash: 3e2c4f3e8160ac024cdf776afb91514f6db6e11cc8c470a96aadbb4365aaa3d9
+  last_verified: '2026-09-11'
+  change_history:
+  - date: '2026-09-11'
+    author: <governance-admin>
+    justification: Initial governance baseline for the starter kit
+    previous_sha256: null
+    new_sha256: 3e2c4f3e8160ac024cdf776afb91514f6db6e11cc8c470a96aadbb4365aaa3d9

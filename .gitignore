@@ -1,0 +1,18 @@
+# Local, machine-specific, or secret — never commit
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+# copy from config.yaml.example; may hold per-env values
+config.yaml
+# generated link-free plain-text copy of README.md (regenerate as needed)
+README.txt
+.env
+.env.*
+*.pem
+*.key
+outputs/
+.DS_Store
+
+# Kiro per-developer local settings (machine paths + secrets); ship the .example instead
+.kiro/settings/

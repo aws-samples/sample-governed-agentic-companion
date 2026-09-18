@@ -1,0 +1,10 @@
+# Tier-B (medium-velocity) — example environment reference. S3-overlay-eligible (human-promoted).
+summary: >-
+  The reference deployment uses a standard promotion order of DEV -> TEST -> UAT -> PROD, with a
+  human gate at each step. Each environment is provisioned from the same container image; only
+  non-secret per-environment config (region, model id, bucket) differs, injected as runtime
+  environment variables. This is illustrative — replace with your own environment topology.
+promotion_order: [DEV, TEST, UAT, PROD]
+notes:
+  - "Same image across environments keeps releases reproducible (test == deployed)."
+  - "This file is Tier-B: it may be updated via the S3 overlay through a human-reviewed promotion."

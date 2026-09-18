@@ -1,0 +1,26 @@
+{
+  "_comment": "MCP config for the Governed Agentic Companion front door. Copy the server entry into your IDE's MCP config (Kiro: .kiro/settings/mcp.json — gitignored; Claude Code: .mcp.json) and MERGE with any existing mcpServers. Never commit real paths, ARNs, tokens, or account ids. Two options — use ONE.",
+
+  "option_A_local_bridge": {
+    "mcpServers": {
+      "companion-engine": {
+        "command": "bash",
+        "args": ["-c", "source ~/.companion-frontdoor.env && exec /ABSOLUTE/PATH/TO/governed-agentic-companion/.venv/bin/python /ABSOLUTE/PATH/TO/governed-agentic-companion/frontdoor/mcp_bridge.py"],
+        "disabled": false,
+        "autoApprove": ["companion_kb"]
+      }
+    }
+  },
+
+  "option_B_gateway_http": {
+    "mcpServers": {
+      "companion-engine": {
+        "type": "http",
+        "url": "${GAC_GATEWAY_URL}",
+        "headers": { "Authorization": "Bearer ${GAC_GATEWAY_TOKEN}" },
+        "disabled": false,
+        "autoApprove": ["companion_kb"]
+      }
+    }
+  }
+}

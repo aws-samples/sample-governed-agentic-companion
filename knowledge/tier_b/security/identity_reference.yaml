@@ -1,0 +1,13 @@
+# Tier-B (medium-velocity) — example identity/auth reference. S3-overlay-eligible (human-promoted).
+summary: >-
+  Builders authenticate to an OIDC identity provider (Amazon Cognito in the reference) with MFA
+  and receive a short-lived JWT that the IDE front door presents to the AgentCore Gateway. The
+  gateway validates the inbound token and reaches the runtime over its own OAuth client_credentials
+  (M2M) grant — a separate credential. These two token flows are distinct; conflating them is the
+  most common integration mistake. Illustrative — replace with your IdP's specifics.
+token_flows:
+  inbound: "end-user JWT from the enterprise IdP (audience = the app client); validated at the gateway"
+  outbound: "gateway's own OAuth client_credentials grant with a resource-server scope"
+notes:
+  - "An authorizer that checks client_id validates the ACCESS token; an aud check reads the ID token."
+  - "This file is Tier-B: it may be updated via the S3 overlay through a human-reviewed promotion."

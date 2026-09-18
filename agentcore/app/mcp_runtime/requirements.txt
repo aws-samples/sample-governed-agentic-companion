@@ -1,0 +1,18 @@
+# Governed Companion — AgentCore MCP-Runtime app deps (the /mcp face), deploy-time.
+# Same stack as the /invocations app PLUS the MCP SDK + an ASGI server. Current PATCHED floors.
+
+# AgentCore Runtime + observability
+bedrock-agentcore>=1.18.1   # CVE-2026-16796 fixed in 1.18.1
+aws-opentelemetry-distro
+opentelemetry-api>=1.20.0
+
+# MCP server SDK (this runtime's protocol face) + ASGI server for the STATELESS app
+mcp>=1.27.2                 # CVE-2025-53365/-53366/-66416 (1.23.0); CVE-2026-52869/-52870/-59950 (session-principal, experimental-tasks, WebSocket-Origin) fixed in 1.27.2. NB: this runtime is stateless + no WS/experimental-tasks, so not exposed; floor raised to clear the SBoM scan.
+uvicorn>=0.30.0
+
+# Inbound identity (defense-in-depth behind the platform authorizer), guarded import
+PyJWT[crypto]>=2.13.0       # CVE-2026-32597 / -48526 / PyJWKClient SSRF-DoS fixed by 2.13.0
+
+# Engine runtime deps (mirror the repo-root requirements)
+pyyaml>=6.0
+boto3>=1.34.0               # S3 KB store/overlay, Bedrock (Tier 3)

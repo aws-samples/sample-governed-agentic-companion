@@ -1,0 +1,44 @@
+
+# CI for the Governed Agentic Companion (GitHub Actions).
+#
+# Ported from the internal GitLab CI pipeline. Runs on every push and pull
+# request: installs the deterministic-tier dependencies and runs the unit tests.
+#
+# All jobs are read-only verification — nothing deploys or mutates any
+# environment (PRINCIPLES.md Tenets 1 and 3). The deterministic Tier-1 path
+# needs no AWS or LLM credentials, so the suite runs fully offline in CI.
+
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  tests:
+    name: Unit tests (offline)
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.9", "3.12"]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Run tests
+        run: python -m pytest -q

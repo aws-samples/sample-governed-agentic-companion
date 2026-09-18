@@ -1,0 +1,9 @@
+# Core (deterministic tier — no AWS, no LLM needed to run status/ask/gate + tests).
+pyyaml>=6.0
+pytest>=9.0.3           # dev/test only
+
+# Optional — only needed when you turn on a cloud path or a front door:
+#   boto3>=1.26.0        # S3 KB overlay, Bedrock (Tier 3), AgentCore
+#   mcp>=1.23.0          # the MCP front doors (local stdio bridge / gateway)
+# Pin these to current PATCHED releases when you enable them (watch advisories:
+# PyJWT>=2.13.0, mcp>=1.23.0, requests>=2.32.4, jinja2>=3.1.6, etc.).
