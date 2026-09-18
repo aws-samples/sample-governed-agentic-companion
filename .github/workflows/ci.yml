@@ -43,3 +43,20 @@ jobs:
 
       - name: Run tests
         run: python -m pytest -q
+
+  # Single stable status check to require in branch protection. Its name does
+  # not change when the test matrix (Python versions) changes, so you configure
+  # the required check once. It passes only if every `tests` matrix leg passed.
+  ci-success:
+    name: CI success
+    if: always()
+    needs: tests
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Verify all test jobs passed
+        run: |
+          if [ "${{ needs.tests.result }}" != "success" ]; then
+            echo "One or more test jobs did not succeed: ${{ needs.tests.result }}"
+            exit 1
+          fi
+          echo "All test jobs passed."
