@@ -1,0 +1,21 @@
+{
+  "_comment": "Kiro MCP config for the Governed Agentic Companion cloud front door via the LOCAL BRIDGE. Kiro spawns frontdoor/mcp_bridge.py as a stdio MCP server; the bridge forwards to the deployed AgentCore runtime with a Cognito access token it mints + auto-refreshes. Copy the companion-engine entry into your workspace .kiro/settings/mcp.json (or ~/.kiro/settings/mcp.json) and MERGE with any existing mcpServers. Set the absolute path to your clone and fill the env from your gitignored ~/.companion-frontdoor.env (see frontdoor/README.md) — never commit real secrets, ARNs, or account ids. Governance is unchanged: the bridge only relays; the runtime's response is already gated in the cloud; a human deploys (Tenet 1).",
+  "mcpServers": {
+    "companion-engine": {
+      "command": "python3",
+      "args": ["/ABSOLUTE/PATH/TO/governed-agentic-companion/frontdoor/mcp_bridge.py"],
+      "env": {
+        "GAC_RUNTIME_ARN": "${GAC_RUNTIME_ARN}",
+        "GAC_RUNTIME_REGION": "${GAC_RUNTIME_REGION}",
+        "GAC_COGNITO_REGION": "${GAC_COGNITO_REGION}",
+        "GAC_COGNITO_USER_POOL_ID": "${GAC_COGNITO_USER_POOL_ID}",
+        "GAC_COGNITO_CLIENT_ID": "${GAC_COGNITO_CLIENT_ID}",
+        "GAC_COGNITO_CLIENT_SECRET": "${GAC_COGNITO_CLIENT_SECRET}",
+        "GAC_COGNITO_USERNAME": "${GAC_COGNITO_USERNAME}",
+        "GAC_COGNITO_PASSWORD": "${GAC_COGNITO_PASSWORD}"
+      },
+      "disabled": false,
+      "autoApprove": ["companion_kb"]
+    }
+  }
+}

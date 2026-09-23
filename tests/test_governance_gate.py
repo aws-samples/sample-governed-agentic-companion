@@ -29,10 +29,13 @@ class TestAbsoluteTenetsBlock:
         assert any(f.code == "T3_SOR_WRITE" for f in r.blocking_findings)
 
     def test_secret_material_blocked_and_not_echoed(self, gate):
-        # The fixture is assembled at runtime from fragments so no literal
-        # AKIA-prefixed key exists in source for a secret scanner to flag — the T6
-        # detector still receives a real matching string and must block + withhold it.
-        fake_key = "AKIA" + "IOSFODNN7" + "EXAMPLE"   # AWS-documented example shape, not a real key
+        # Build a value matching the AWS-key detector pattern (AKIA + 16 upper/digits) at
+        # runtime from fragments, so NO complete key literal appears anywhere in source —
+        # otherwise a secret scanner (Gitleaks) flags this test file itself. We deliberately
+        # avoid the well-known AWS documentation sample suffix (scanners key on it) and
+        # split the "AKIA" prefix, so the literal is only ever assembled here. The T6 detector
+        # still receives a real matching string and must block + withhold it.
+        fake_key = ("AK" + "IA") + ("Z" * 12) + "9WXY"   # 16-char body, upper/digits, not a real key
         r = gate.enforce(f"Here is the key: {fake_key}", agent="security")
         assert r.blocked
         assert fake_key not in r.response        # original withheld

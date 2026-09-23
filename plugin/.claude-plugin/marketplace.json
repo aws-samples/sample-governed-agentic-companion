@@ -1,0 +1,17 @@
+{
+  "name": "governed-agentic-companion-marketplace",
+  "owner": {
+    "name": "Governed Agentic Companion"
+  },
+  "metadata": {
+    "description": "Distribution channel for the Governed Agentic Companion starter kit. Fork per engagement, replace the example specialists/knowledge, and install into the team's Claude Code.",
+    "version": "0.1.0"
+  },
+  "plugins": [
+    {
+      "name": "governed-agentic-companion",
+      "source": "./",
+      "description": "Governed multi-agent companion starter kit (product-agnostic; replace the example specialists with your own)."
+    }
+  ]
+}

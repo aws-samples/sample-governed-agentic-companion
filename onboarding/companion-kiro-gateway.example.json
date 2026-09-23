@@ -1,0 +1,14 @@
+{
+  "_comment": "Kiro MCP config for the Governed Agentic Companion cloud front door via the AGENTCORE GATEWAY. This is the ALTERNATIVE to the local-bridge config (onboarding/companion-kiro-mcp.example.json): instead of spawning frontdoor/mcp_bridge.py locally, Kiro connects directly to the JWT-authorized AgentCore Gateway that fronts the MCP runtime (agentcore/app/mcp_runtime). Use this once the Gateway is stood up. Copy the companion-engine entry into .kiro/settings/mcp.json and MERGE with existing mcpServers. GAC_GATEWAY_URL is the FULL path-based invocations URL (https://<gateway-id>.gateway.bedrock-agentcore.<region>.amazonaws.com/companion-engine/invocations), not just the host. Set ${GAC_GATEWAY_URL}/${GAC_GATEWAY_TOKEN} from your gitignored env — never commit a real URL or token. Keep the local-bridge config as the offline / gateway-down FALLBACK. Governance unchanged: the runtime response is already gated in the cloud; a human deploys (Tenet 1).",
+  "mcpServers": {
+    "companion-engine": {
+      "type": "http",
+      "url": "${GAC_GATEWAY_URL}",
+      "headers": {
+        "Authorization": "Bearer ${GAC_GATEWAY_TOKEN}"
+      },
+      "disabled": false,
+      "autoApprove": ["companion_kb"]
+    }
+  }
+}
