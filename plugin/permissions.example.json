@@ -1,0 +1,25 @@
+{
+  "_comment": "Governed Agentic Companion read/write boundary. Claude Code enforces permissions from the PROJECT/USER .claude/settings.json, NOT from a plugin's settings.json. Merge this block into your .claude/settings.json (project scope recommended) after installing the governed-agentic-companion plugin. It enforces Tenet 1 (no deployment) and Tenet 3 (read/write boundary) at the permission layer, complementing the per-agent 'disallowedTools: Bash' shipped in the plugin. The governed engine is reached through the single companion-engine server (gateway or local bridge); it is set to 'ask'.",
+  "permissions": {
+    "allow": [
+      "mcp__jira",
+      "mcp__confluence",
+      "mcp__github"
+    ],
+    "ask": [
+      "mcp__aws",
+      "mcp__companion-engine"
+    ],
+    "deny": [
+      "Bash(terraform apply:*)",
+      "Bash(terraform destroy:*)",
+      "Bash(cdk deploy:*)",
+      "Bash(cdk destroy:*)",
+      "Bash(aws cloudformation deploy:*)",
+      "Bash(aws cloudformation delete-stack:*)",
+      "Bash(ansible-playbook:*)",
+      "Bash(kubectl apply:*)",
+      "Bash(kubectl delete:*)"
+    ]
+  }
+}

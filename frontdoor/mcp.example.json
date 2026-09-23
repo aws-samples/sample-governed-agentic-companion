@@ -1,11 +1,22 @@
 {
-  "_comment": "MCP config for the Governed Agentic Companion front door. Copy the server entry into your IDE's MCP config (Kiro: .kiro/settings/mcp.json — gitignored; Claude Code: .mcp.json) and MERGE with any existing mcpServers. Never commit real paths, ARNs, tokens, or account ids. Two options — use ONE.",
+  "_comment": "MCP config for the Governed Agentic Companion front door. Copy ONE server entry into your IDE's MCP config (Kiro: .kiro/settings/mcp.json — gitignored; Claude Code: .mcp.json or the plugin) and MERGE with any existing mcpServers. Never commit real paths, ARNs, tokens, or account ids. Two options — use ONE. Both expose the same two governed tools (ask_companion, companion_kb); responses are gated in the cloud.",
 
   "option_A_local_bridge": {
+    "_comment": "Kiro/Claude Code spawn frontdoor/mcp_bridge.py as a stdio MCP server. The bridge mints + auto-refreshes a Cognito access token and relays each call to the deployed AgentCore runtime. Set the absolute path to your clone and fill the env from your gitignored ~/.companion-frontdoor.env. Best for a hands-off setup and as the gateway-down fallback.",
     "mcpServers": {
       "companion-engine": {
-        "command": "bash",
-        "args": ["-c", "source ~/.companion-frontdoor.env && exec /ABSOLUTE/PATH/TO/governed-agentic-companion/.venv/bin/python /ABSOLUTE/PATH/TO/governed-agentic-companion/frontdoor/mcp_bridge.py"],
+        "command": "python3",
+        "args": ["/ABSOLUTE/PATH/TO/governed-agentic-companion/frontdoor/mcp_bridge.py"],
+        "env": {
+          "GAC_RUNTIME_ARN": "${GAC_RUNTIME_ARN}",
+          "GAC_RUNTIME_REGION": "${GAC_RUNTIME_REGION}",
+          "GAC_COGNITO_REGION": "${GAC_COGNITO_REGION}",
+          "GAC_COGNITO_USER_POOL_ID": "${GAC_COGNITO_USER_POOL_ID}",
+          "GAC_COGNITO_CLIENT_ID": "${GAC_COGNITO_CLIENT_ID}",
+          "GAC_COGNITO_CLIENT_SECRET": "${GAC_COGNITO_CLIENT_SECRET}",
+          "GAC_COGNITO_USERNAME": "${GAC_COGNITO_USERNAME}",
+          "GAC_COGNITO_PASSWORD": "${GAC_COGNITO_PASSWORD}"
+        },
         "disabled": false,
         "autoApprove": ["companion_kb"]
       }
@@ -13,6 +24,7 @@
   },
 
   "option_B_gateway_http": {
+    "_comment": "Point the IDE's MCP client (an http server) at the AgentCore Gateway's full path-based invocations URL with a Bearer JWT. Keep the token fresh with frontdoor/gateway_token.py (print/write-env/daemon). Use this once the gateway is stood up; keep option A as the offline fallback.",
     "mcpServers": {
       "companion-engine": {
         "type": "http",

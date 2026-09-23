@@ -110,8 +110,19 @@ class BaseAgent:
         answer = self._answer_from_knowledge(request)
         if answer:
             return answer
-        return (f"[{self.name}] This is not in my current knowledge base. I can note it for "
-                "review, or you can teach me — I won't guess at an answer.")
+        return (
+            f"[{self.name}] I can't ground an answer to this in my current knowledge base "
+            "yet, so I won't guess (Tenet 4). Let's move it forward together rather than stop "
+            "here:\n"
+            "  1. If another specialist owns it, re-route via the Orchestrator: "
+            f'./run.sh ask "{request.strip()}"\n'
+            "  2. If it IS in my area but I'm missing specifics, tell me the concrete artifact "
+            "or constraint and I'll ground a draft on it.\n"
+            "  3. If it's a new requirement beyond the knowledge base, describe the outcome you "
+            "want and we'll shape the approach together (a human still builds and deploys, "
+            "Tenet 1); capture the facts we confirm so the knowledge base grows for the next "
+            "builder."
+        )
 
     def _answer_from_knowledge(self, request: str) -> str:
         """Deterministic Tier-1 answer: surface the most relevant knowledge entry."""

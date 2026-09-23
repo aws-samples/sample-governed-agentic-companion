@@ -1,7 +1,7 @@
 # Copy to config.yaml (gitignored) and adjust. Defaults are deterministic — no AWS, no LLM.
 system:
   name: "governed-agentic-companion"
-  version: "1.0.0"
+  version: "1.1.1"
 
 # Execution tiers. Tier 1 (deterministic) always works. Tier 2/3 are opt-in.
 llm:
@@ -19,6 +19,18 @@ llm:
 # answers are BLOCKED by the gate.
 grounding:
   fact_threshold: 0.95
+
+# Evidence gateway (opt-in; see agents/evidence_gateway.py). Default OFF — a true no-op that
+# leaves the gate and orchestrator byte-for-byte unchanged. When set to `bible_markdown`, a
+# provenance packet is built before each dispatch and the gate BLOCKS on a missing/tampered/
+# non-READY/route-mismatched packet. GUARDRAIL: evidence can only TIGHTEN the gate — it is never
+# fed into confidence scoring. The corpus is DERIVED from knowledge/ (a pointer, not a rival
+# ledger — Tenet 8): generate it with `./run.sh bible` before turning this on, or fail closed.
+evidence:
+  provider: "none"          # none | bible_markdown
+  # path_env: "GAC_BIBLE_PATH"          # env var naming a curated corpus (optional; else .evidence/BIBLE.md)
+  # allowed_roots_env: "GAC_EVIDENCE_ROOTS"  # env var listing allowed evidence roots
+  # max_claims: 12
 
 # Tier-B curated KB overlay (opt-in; fails open to the in-repo baseline). See agents/kb_overlay.py.
 knowledge:

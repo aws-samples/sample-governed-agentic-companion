@@ -32,6 +32,8 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import List, Optional
 
+from .evidence_gateway import EvidencePacket, packet_validity_reason
+
 logger = logging.getLogger(__name__)
 
 CONFIDENCE_FACT_THRESHOLD = 0.95
@@ -179,7 +181,11 @@ class GovernanceGate:
         used_llm: Optional[bool] = None,
         sources: Optional[List[str]] = None,
         footer: bool = True,
+        evidence: Optional[EvidencePacket] = None,
     ) -> GateResult:
+        """`evidence` is an optional EvidencePacket from the evidence gateway (see
+        evidence_gateway.py). It defaults to None, a no-op: with no evidence provider
+        configured, enforcement is byte-for-byte unchanged from before this parameter."""
         trust_zone = "exploration" if used_llm else "verified"
         sources = sources or []
 
@@ -190,6 +196,7 @@ class GovernanceGate:
         findings.extend(self._detect_tenet4(confidence, trust_zone))
         findings.extend(self._detect_tenet11(response))
         findings.extend(self._detect_tenet12(response))
+        findings.extend(self._detect_evidence(evidence, agent, request))
 
         blocking = [f for f in findings if f.severity == Severity.BLOCK]
         if blocking:
@@ -311,6 +318,36 @@ class GovernanceGate:
                 "verification required.")]
         return []
 
+    def _detect_evidence(self, evidence: Optional[EvidencePacket],
+                         agent: str, request: str) -> List[Finding]:
+        """Evidence-provenance detector. No-op when no packet is supplied; this is exactly
+        how "no evidence provider configured" preserves existing behavior.
+
+        Independent of confidence/trust_zone: a high confidence score cannot substitute for
+        a missing, tampered, non-READY, request-mismatched, or route-mismatched evidence
+        packet, and this runs in the verified zone too. This closes the deterministic-
+        grounding-skip gap: a deterministic answer can no longer pass unproven when a
+        provider is configured."""
+        if evidence is None:
+            return []
+        reason = packet_validity_reason(evidence, request, agent)
+        if not reason:
+            return []
+        if reason == "invalid_digest":
+            return [Finding("Evidence", "EV_INVALID_DIGEST", Severity.BLOCK,
+                "Evidence packet digest does not match its contents; the packet is missing, "
+                "tampered, or was altered after it was built.")]
+        if reason == "request_mismatch":
+            return [Finding("Evidence", "EV_REQUEST_MISMATCH", Severity.BLOCK,
+                "Evidence packet was built for a different request; it cannot authorize this one.")]
+        if reason == "route_mismatch":
+            return [Finding("Evidence", "EV_ROUTE_MISMATCH", Severity.BLOCK,
+                f"Evidence packet route does not authorize dispatching '{agent}'.")]
+        status = reason.split(":", 1)[1]
+        return [Finding("Evidence", f"EV_NOT_READY_{status}", Severity.BLOCK,
+            f"Evidence packet status is {status}, not READY; dependent work must stop "
+            "until it is resolved.")]
+
     @staticmethod
     def _t11_is_directive(response: str, match: "re.Match") -> bool:
         """Directive (BLOCK) vs descriptive assessment (INFO); fail-safe toward INFO."""
@@ -383,8 +420,14 @@ def reset_gate() -> None:
 def gate_output(response: str, *, agent: str, request: str = "", environment: str = "dev",
                 agent_obj: object = None, used_llm: Optional[bool] = None,
                 confidence: Optional[float] = None,
-                sources: Optional[List[str]] = None, footer: bool = True) -> str:
-    """The ONE function every response path calls, so 'everything is gated' is literally true."""
+                sources: Optional[List[str]] = None, footer: bool = True,
+                evidence: Optional[EvidencePacket] = None) -> str:
+    """The ONE function every response path calls, so 'everything is gated' is literally true.
+
+    `evidence` is an optional EvidencePacket from the evidence gateway; it defaults to None
+    (a no-op that preserves existing behavior). GUARDRAIL: the packet is passed to the gate's
+    evidence detector ONLY — it is never fed into confidence scoring (that would change how
+    Tenet 4 is measured). Evidence can only TIGHTEN the gate, never lift an answer over the bar."""
     if agent_obj is not None:
         if used_llm is None:
             used_llm = bool(getattr(agent_obj, "llm_available", False))
@@ -400,4 +443,5 @@ def gate_output(response: str, *, agent: str, request: str = "", environment: st
     return get_gate().enforce(
         response, agent=agent, request=request, environment=environment,
         confidence=confidence, used_llm=used_llm, sources=sources, footer=footer,
+        evidence=evidence,
     ).response

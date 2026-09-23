@@ -5,6 +5,7 @@ Commands:
   status                 governance integrity check + knowledge load summary
   ask "<question>"       route a question through the governed orchestrator (gated)
   gate [--file F]        run the governance gate over stdin/a file (front-door backstop)
+  bible [--out F]        derive the evidence corpus (.evidence/BIBLE.md) from knowledge/
 
 Deterministic by default — no AWS, no LLM required. Enable model tiers in config.yaml.
 """
@@ -52,6 +53,17 @@ def cmd_gate(args) -> int:
     return 2 if result.blocked else 0
 
 
+def cmd_bible(args) -> int:
+    """Derive the evidence corpus (.evidence/BIBLE.md) FROM knowledge/. Required before turning
+    on `evidence.provider: bible_markdown`; the corpus is a pointer into the real KB (Tenet 8),
+    is gitignored, and is regenerated on demand — never hand-edited."""
+    from scripts.generate_bible import main as gen_main
+    argv = []
+    if args.out:
+        argv += ["--out", args.out]
+    return gen_main(argv)
+
+
 def main(argv=None) -> int:
     p = argparse.ArgumentParser(prog="companion", description="Governed Agentic Companion CLI")
     p.add_argument("--environment", default="dev")
@@ -67,6 +79,10 @@ def main(argv=None) -> int:
     g.add_argument("--file", default=None)
     g.add_argument("--footer", action="store_true")
     g.set_defaults(func=cmd_gate)
+
+    b = sub.add_parser("bible", help="derive the evidence corpus (.evidence/BIBLE.md) from knowledge/")
+    b.add_argument("--out", default=None, help="output path (default: .evidence/BIBLE.md)")
+    b.set_defaults(func=cmd_bible)
 
     args = p.parse_args(argv)
     return args.func(args)

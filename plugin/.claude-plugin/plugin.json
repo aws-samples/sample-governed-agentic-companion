@@ -1,0 +1,21 @@
+{
+  "name": "governed-agentic-companion",
+  "displayName": "Governed Agentic Companion",
+  "version": "0.1.0",
+  "description": "A governed, reusable multi-agent companion starter kit. An orchestrator routes each request to a specialist (platform, security), and every response passes an always-on Governance Gate: human-owned deployment in every environment, autonomous grounded review, and a read-only boundary on all systems of record. Fork per engagement and replace the example specialists + knowledge base with your own.",
+  "author": {
+    "name": "Governed Agentic Companion"
+  },
+  "license": "MIT-0",
+  "hooks": "./hooks/hooks.json",
+  "keywords": [
+    "multi-agent",
+    "governance",
+    "governed-ai",
+    "agentic",
+    "aws",
+    "bedrock-agentcore",
+    "starter-kit",
+    "guardrails"
+  ]
+}

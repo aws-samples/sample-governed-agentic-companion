@@ -29,8 +29,17 @@ specialists and knowledge.
   so the core works with no LLM at all.
 - **A hybrid knowledge base** — an in-repo Tier-A baseline (locked) + an optional S3 Tier-B
   overlay (human-promoted) that fails open to the baseline.
-- **Two IDE front doors** — a local stdio MCP bridge (`frontdoor/mcp_bridge.py`) and a direct
-  AgentCore Gateway HTTP path — plus a token-refresh helper (`frontdoor/gateway_token.py`).
+- **An optional evidence gateway** (`evidence.provider`, default `none` — a no-op until you
+  turn it on) — a provider-neutral provenance contract (`agents/evidence_gateway.py`) that,
+  when enabled, builds a packet before dispatch and lets the gate BLOCK on a missing/tampered/
+  not-READY packet. It only ever TIGHTENS the gate (never feeds confidence scoring). `./run.sh
+  bible` derives the evidence corpus from `knowledge/` — a pointer into the KB, not a rival
+  ledger (Tenet 8); `.evidence/` is gitignored.
+- **Multi-IDE front doors** — reach the companion from **Kiro, Claude Code, or any MCP client**:
+  a local stdio MCP bridge (`frontdoor/mcp_bridge.py`), a direct AgentCore Gateway HTTP path, a
+  token-refresh helper (`frontdoor/gateway_token.py`), an **installable Claude Code plugin**
+  (`plugin/`) with a Stop-hook governance backstop, and a one-command onboarding installer
+  (`onboarding/`) that wires routing pointers for both IDEs.
 - **A governance re-baseline script** (`scripts/rebaseline_integrity.py`) — human-run, for when
   you adapt the constitution. The AWS provisioning steps (identity, S3, gateway, the KB-read IAM
   grant) are documented as human-run commands in [`docs/DEPLOY.md`](docs/DEPLOY.md) (Tenet 1 — the
@@ -64,12 +73,14 @@ Codified in [`PRINCIPLES.md`](PRINCIPLES.md), SHA-256 integrity-verified at star
    references in `knowledge/tier_b/` (S3-overlay-eligible via the explicit allowlist).
 5. **Turn on a model tier** when you want depth (`config.yaml`).
 6. **Provision AgentCore + identity** (human-run) — see [`docs/DEPLOY.md`](docs/DEPLOY.md).
-7. **Point your IDE at it** — see [`docs/FRONT-DOORS.md`](docs/FRONT-DOORS.md).
+7. **Point your IDE at it** — run `onboarding/install-companion-frontdoor.sh`, install the Claude
+   Code plugin from `plugin/`, or wire the MCP server directly. See
+   [`docs/FRONT-DOORS.md`](docs/FRONT-DOORS.md).
 
 ## Layout
 
 ```
-sample-governed-agentic-companion/
+governed-agentic-companion/
 ├── PRINCIPLES.md              # the constitution (the 13 tenets)
 ├── governance/
 │   ├── integrity.yaml         # SHA-256 baseline of PRINCIPLES.md
@@ -85,13 +96,26 @@ sample-governed-agentic-companion/
 │   ├── tier_a/                # locked, in-repo, code-reviewed only
 │   └── tier_b/                # medium-velocity, S3-overlay-eligible (explicit allowlist)
 ├── frontdoor/                 # IDE front doors (see frontdoor/README.md)
-│   ├── mcp_bridge.py          # local stdio MCP bridge
+│   ├── mcp_bridge.py          # local stdio MCP bridge (wired to the deployed runtime)
+│   ├── runtime_client.py      # invokes the deployed AgentCore runtime (bearer + retry-on-401)
 │   ├── cognito_token.py       # mints + auto-refreshes the runtime token
 │   ├── gateway_token.py       # gateway JWT refresh helper (print/write-env/daemon)
 │   └── mcp.example.json       # copy into your IDE's MCP config
+├── plugin/                    # installable Claude Code plugin (see plugin/README.md)
+│   ├── .claude-plugin/        # plugin.json (MIT-0) + marketplace.json
+│   ├── .mcp.json              # MCP servers (systems of record read-only)
+│   ├── agents/                # orchestrator + example specialists (disallowedTools: Bash)
+│   ├── hooks/                 # Stop-hook governance backstop (runs main.py gate)
+│   ├── skills/companion/      # SKILL.md
+│   └── permissions.example.json
+├── onboarding/                # one-command multi-IDE front-door installer
+│   ├── install-companion-frontdoor.sh / Install-CompanionFrontDoor.ps1
+│   ├── companion-pointer.md          # Kiro inclusion:auto steering pointer
+│   ├── companion-claude-pointer.md   # Claude Code CLAUDE.md block
+│   └── companion-kiro-mcp.example.json / companion-kiro-gateway.example.json
 ├── agentcore/                 # AgentCore Runtime packaging
 │   ├── agentcore.json.example # runtime/gateway config template
-│   └── app/                   # container entrypoint(s)
+│   └── app/                   # container entrypoint(s) — /invocations + /mcp faces
 ├── scripts/
 │   └── rebaseline_integrity.py # re-baseline the PRINCIPLES.md hash after a governance change
 ├── docs/                      # DEPLOY.md, FRONT-DOORS.md, GOVERNANCE.md
@@ -110,10 +134,6 @@ front doors — ship as first-increment **text detectors** now, with mechanical 
 tracked roadmap (`knowledge/PRINCIPLES.yaml`). We state which controls are deterministic vs
 advisory rather than overclaiming — that honesty is itself a tenet.
 
-## Security
-
-See [CONTRIBUTING](CONTRIBUTING.md#security-issue-notifications) for more information.
-
 ## License
 
-This library is licensed under the MIT-0 License. See the [LICENSE](LICENSE) file.
+MIT No Attribution (MIT-0) — see [`LICENSE`](LICENSE).

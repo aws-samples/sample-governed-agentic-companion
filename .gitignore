@@ -12,6 +12,8 @@ README.txt
 *.pem
 *.key
 outputs/
+# DERIVED evidence corpus — regenerated from knowledge/ via `./run.sh bible`; never commit
+.evidence/
 .DS_Store
 
 # Kiro per-developer local settings (machine paths + secrets); ship the .example instead
