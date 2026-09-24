@@ -1,9 +1,13 @@
 # Core (deterministic tier — no AWS, no LLM needed to run status/ask/gate + tests).
-pyyaml>=6.0
-pytest>=9.0.3           # dev/test only
+# Versions are PINNED for reproducible, supply-chain-safe installs. Each pin is a current
+# PATCHED release; bump deliberately after checking advisories (do not loosen to a range).
+pyyaml==6.0.3
+pytest==9.1.1          # dev/test only
 
-# Optional — only needed when you turn on a cloud path or a front door:
-#   boto3>=1.26.0        # S3 KB overlay, Bedrock (Tier 3), AgentCore
-#   mcp>=1.28.0          # the MCP front doors (local stdio bridge / gateway)
-# Pin these to current PATCHED releases when you enable them (watch advisories:
-# PyJWT>=2.13.0, mcp>=1.28.0, requests>=2.33.0, jinja2>=3.1.6, etc.).
+# Optional — only needed when you turn on a cloud path or a front door. Pin to a current
+# PATCHED release when you enable one (these are known-good floors; verify latest advisories):
+#   boto3==1.35.0       # S3 KB overlay, Bedrock (Tier 3), AgentCore
+#   mcp==1.28.0         # the MCP front doors (local stdio bridge / gateway)
+#   PyJWT[crypto]==2.13.0
+#   requests==2.33.0
+#   jinja2==3.1.6

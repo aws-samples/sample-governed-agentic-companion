@@ -8,6 +8,28 @@ semantic versioning (MAJOR.MINOR.PATCH), tracked in `config.yaml` (`system.versi
 - **MINOR** — new capabilities added in a backward-compatible way.
 - **PATCH** — fixes and documentation corrections that add/remove no capability.
 
+## [1.1.2] - 2026-09-24 — CSR remediation, confidence calibration, fork-ready LLM peering
+
+- **Content Security Review (Holmes) remediation.** Added non-production/sample disclaimers to
+  the README and deployment docs (Cognito/JWT/IAM/OAuth guidance is illustrative, not for
+  production as-is); pinned the core dependencies (`pyyaml`, `pytest`) and gave the
+  previously-unpinned `aws-opentelemetry-distro` a `>=0.17.1` floor in the AgentCore
+  requirements; dropped the bare unpinned `pytest` from the installer. The derived evidence
+  corpus (`scripts/generate_bible.py`) now emits **repo-relative** Evidence paths, so a
+  generated `BIBLE.md` carries no developer-username PII; the orchestrator's allowed evidence
+  roots include the repo root so relative citations resolve.
+- **Confidence calibration (relevance damping).** `assess_confidence_detail` now damps the
+  grounding score by how much of the request the answer actually addresses, so a response full
+  of KB vocabulary that ignores the question can no longer score high on vocabulary alone. An
+  on-topic grounded answer still clears the fact bar; a term is matched by stem as well as exact
+  substring so paraphrase isn't falsely penalised.
+- **Fork-ready LLM peering.** The peering decline is now a reusable `_peering_decline` method,
+  and `llm_answer_or_decline(llm_answer=...)` is provided so a fork that adds an LLM tier
+  degrades an ungrounded answer to the peering decline instead of a hard gate block — without
+  the deterministic base kit taking any LLM dependency (the example specialists remain
+  deterministic-only).
+- Suite: 105 tests passing; `./run.sh status` integrity-clean. MIT-0 preserved.
+
 ## [1.1.1] - 2026-09-23 — Peering decline + lint/dependency hygiene
 
 - **Peering decline (self-evolution).** A specialist that can't ground an answer no longer

@@ -1,5 +1,9 @@
 # AgentCore reference code (deploy the governed companion to Amazon Bedrock AgentCore)
 
+> **⚠️ Sample code — not for production as-is.** Provided for demonstration and educational
+> purposes. The OAuth M2M, JWT auth, and IAM role grants referenced here are illustrative and
+> **not intended for production use without additional security review, testing, and hardening**.
+
 This directory is the **deployable reference** for putting the companion on Amazon Bedrock
 AgentCore. It is intentionally thin: it wraps the same engine (`agents/`, `governance/`,
 `knowledge/`) that runs locally — **no reasoning or governance is re-implemented here**. The

@@ -1,5 +1,10 @@
 # Deploy to Amazon Bedrock AgentCore (human-run — Tenet 1)
 
+> **⚠️ Sample code — not for production as-is.** This deployment guide is provided for
+> demonstration and educational purposes. The IAM grants, OAuth/OIDC and Cognito setup, and
+> credential provisioning shown here are illustrative and **not intended for production use
+> without additional security review, testing, and hardening** for your account and threat model.
+
 The companion runs locally on the deterministic tier with no AWS. This is how you put it on
 Amazon Bedrock AgentCore so builders reach it through the AgentCore Gateway. **A human performs
 every AWS/IdP mutation** — no agent deploys, provisions, or invokes against AWS.

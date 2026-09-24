@@ -6,6 +6,13 @@ client**. It is **safe by construction**: it never deploys or mutates an environ
 a secret, and never presents an ungrounded guess as fact — and the boundary that keeps it safe has
 **no off switch**.
 
+> **⚠️ Sample code — not for production as-is.** This project is provided for demonstration and
+> educational purposes only. It ships with example specialists and a generic knowledge base to
+> illustrate the governance model. It is **not intended for production use without additional
+> security review, testing, and hardening** — including your own review of the authentication,
+> authorization, IAM, and credential-provisioning guidance in the deployment docs before you
+> deploy anything to an AWS account.
+
 This kit is the reference implementation of the AWS Prescriptive Guidance pattern *"The Governed
 Companion."* It is **product- and customer-agnostic**: it ships with two example specialists and a
 tiny generic knowledge base so you can see the governance work in seconds, then swap in your own

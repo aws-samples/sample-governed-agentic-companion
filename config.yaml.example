@@ -1,7 +1,7 @@
 # Copy to config.yaml (gitignored) and adjust. Defaults are deterministic — no AWS, no LLM.
 system:
   name: "governed-agentic-companion"
-  version: "1.1.1"
+  version: "1.1.2"
 
 # Execution tiers. Tier 1 (deterministic) always works. Tier 2/3 are opt-in.
 llm:
