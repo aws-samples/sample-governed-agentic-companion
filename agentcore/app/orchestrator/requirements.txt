@@ -4,7 +4,7 @@
 
 # AgentCore Runtime + observability
 bedrock-agentcore>=1.18.1   # CVE-2026-16796 fixed in 1.18.1
-aws-opentelemetry-distro
+aws-opentelemetry-distro>=0.17.1   # floor set (was unpinned); resolve to an exact version at prod image build
 opentelemetry-api>=1.20.0
 
 # Inbound identity (defense-in-depth behind the platform authorizer), guarded import

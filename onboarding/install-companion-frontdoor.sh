@@ -41,7 +41,8 @@ else
 fi
 echo "==> Installing/updating requirements..."
 ./.venv/bin/python -m pip install --quiet --upgrade pip
-./.venv/bin/python -m pip install --quiet -r requirements.txt pytest
+# pytest is pinned in requirements.txt (dev/test dep) — no separate unpinned install.
+./.venv/bin/python -m pip install --quiet -r requirements.txt
 
 # --- 3. Governance integrity + knowledge load check -------------------------
 echo "==> Verifying engine (main.py status)..."

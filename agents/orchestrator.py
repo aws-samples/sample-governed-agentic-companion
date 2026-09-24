@@ -76,8 +76,13 @@ def _get_evidence_provider(config: dict) -> Optional[EvidenceProvider]:
                 f"{path_key}/{roots_key} env vars to a curated corpus.",
             )
         try:
+            # Allowed roots: the repo root (so repo-relative citations like
+            # `knowledge/tier_a/...` emitted by scripts/generate_bible.py resolve — the corpus
+            # carries no absolute home-dir paths), the knowledge tree, and the corpus dir.
+            # resolve_within_roots still requires each cited file to exist under a root.
             return BibleMarkdownProvider(
-                default_bible, allowed_roots=[repo_root / "knowledge", default_bible.parent],
+                default_bible,
+                allowed_roots=[repo_root, repo_root / "knowledge", default_bible.parent],
                 max_claims=max_claims,
             )
         except Exception as exc:

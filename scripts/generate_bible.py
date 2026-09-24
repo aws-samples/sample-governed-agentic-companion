@@ -82,9 +82,16 @@ def generate(knowledge_root: Path = KNOWLEDGE_ROOT) -> str:
         cid = f"R-{section}-{counters[section]}"
         assertion = _assertion(data, key)
         cls = _claim_class(key, data)
-        # Absolute path so the corpus resolves regardless of the caller's cwd; the provider
-        # still enforces that it lives under an allowed root (GAC_EVIDENCE_ROOTS).
-        ev = f"{path.resolve()}:1-{end}"
+        # Repo-relative path (POSIX form): the corpus is portable and carries no absolute
+        # filesystem paths (which would embed the generating user's home dir — a PII/privacy
+        # leak in a shared artifact). The provider resolves it against the allowed evidence
+        # roots (the repo `knowledge/` tree by default), so a relative citation still resolves
+        # to the real KB file. Falls back to the raw path if it is somehow outside the repo.
+        try:
+            rel_path = path.resolve().relative_to(REPO_ROOT).as_posix()
+        except ValueError:
+            rel_path = path.as_posix()
+        ev = f"{rel_path}:1-{end}"
         block = [
             f"### {cid}. {assertion}",
             f"- Class: {cls}",

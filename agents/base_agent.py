@@ -98,10 +98,56 @@ class BaseAgent:
         base = 0.6 if not self.llm_available else 0.7
         span = 0.4 if not self.llm_available else 0.3
         score = min(1.0, base + best_coverage * span)
-        return (score, sorted(matched))
+        # RELEVANCE DAMPING (Tenet 4 honesty): coverage measures "uses our KB vocabulary",
+        # NOT "answers what was asked". A response full of domain words that ignores the
+        # question could otherwise score high on vocabulary alone. Damp the score by how many
+        # of the REQUEST's distinctive terms the RESPONSE actually addresses. An on-topic
+        # answer is unpenalised; an off-topic one cannot reach the fact bar on vocabulary.
+        score *= self._request_relevance(query, response)
+        return (round(score, 4), sorted(matched))
 
     def assess_confidence(self, response: str, query: str = "") -> float:
         return self.assess_confidence_detail(response, query)[0]
+
+    #: fraction of a request's distinctive terms an answer must address to count fully on-topic
+    #: (relevance multiplier 1.0); below 1.0 so paraphrase isn't falsely pushed under the bar.
+    _HIGH_RELEVANCE_FRACTION = 0.8
+    #: shared leading-char length treated as a stem match (so "tune"~"tuning", "consumer"~"consumers")
+    _RELEVANCE_STEM_LEN = 5
+
+    def _request_relevance(self, query: str, response: str) -> float:
+        """Fraction of the request's DISTINCTIVE terms the response addresses, mapped to a
+        relevance multiplier in [0.4, 1.0].
+
+        1.0 when the request has no distinctive terms or the response engages (at/above
+        _HIGH_RELEVANCE_FRACTION of) them; falls linearly to a 0.4 floor as the response
+        ignores more of what was asked. A term is matched by exact substring OR a shared word
+        stem, so paraphrase ("tuning" for "tune") is not falsely penalised. Read-only; never
+        raises. Off-topic answers still land near the floor and stay below the fact bar."""
+        try:
+            q_terms = {t for t in re.findall(r"[a-z0-9]{4,}", (query or "").lower())
+                       if t not in self._STOPWORDS}
+            if not q_terms:
+                return 1.0
+            resp = (response or "").lower()
+            resp_words = set(re.findall(r"[a-z0-9]{4,}", resp))
+            stem = self._RELEVANCE_STEM_LEN
+
+            def _addressed(term: str) -> bool:
+                if term in resp:
+                    return True
+                t_stem = term[:stem]
+                if len(t_stem) < 4:
+                    return False
+                return any(w.startswith(t_stem) or term.startswith(w[:stem])
+                           for w in resp_words if len(w) >= 4)
+
+            fraction = sum(1 for t in q_terms if _addressed(t)) / len(q_terms)
+            if fraction >= self._HIGH_RELEVANCE_FRACTION:
+                return 1.0
+            return 0.4 + (1.0 - 0.4) * (fraction / self._HIGH_RELEVANCE_FRACTION)
+        except Exception:
+            return 1.0
 
     # -- the contract ------------------------------------------------------------
 
@@ -110,19 +156,57 @@ class BaseAgent:
         answer = self._answer_from_knowledge(request)
         if answer:
             return answer
+        return self._peering_decline(request)
+
+    def _peering_decline(self, request: str, *, scope_hint: str = "") -> str:
+        """A PEERING decline: honest that the answer isn't grounded in the current knowledge
+        base, but a companion move — offer paths forward instead of dead-ending. Governance is
+        intact (no fabrication, no action, describe-only).
+
+        This is the graceful alternative to a hard governance-gate block. A fork that adds an
+        LLM tier should route an ungrounded LLM answer through here (see llm_answer_or_decline)
+        rather than let the gate block it with a bare wall — the user gets a scope-boundary
+        redirect, not a dead end. We say "not grounded yet" (true), never "out of scope"
+        (which we can't know)."""
+        scope = scope_hint or f"the {self.name} area"
         return (
             f"[{self.name}] I can't ground an answer to this in my current knowledge base "
             "yet, so I won't guess (Tenet 4). Let's move it forward together rather than stop "
             "here:\n"
             "  1. If another specialist owns it, re-route via the Orchestrator: "
             f'./run.sh ask "{request.strip()}"\n'
-            "  2. If it IS in my area but I'm missing specifics, tell me the concrete artifact "
+            f"  2. If it IS in {scope} but I'm missing specifics, tell me the concrete artifact "
             "or constraint and I'll ground a draft on it.\n"
             "  3. If it's a new requirement beyond the knowledge base, describe the outcome you "
             "want and we'll shape the approach together (a human still builds and deploys, "
             "Tenet 1); capture the facts we confirm so the knowledge base grows for the next "
             "builder."
         )
+
+    def llm_answer_or_decline(self, request: str, environment: str, *,
+                              llm_answer: str, scope_hint: str = "") -> str:
+        """Parity helper for FORKS that add an LLM tier (the example kit is deterministic-only,
+        so nothing here calls it yet — it is ready infrastructure, not a live path).
+
+        Given an already-produced `llm_answer`, deliver it only if it clears the grounding
+        fact bar; otherwise degrade to a PEERING decline instead of letting the governance gate
+        hard-block the ungrounded answer. This keeps a fork's LLM path from dead-ending the user
+        with a bare "⛔ blocked" wall — the agent declines honestly and routes. Mirrors the same
+        contract used in the customer-specific accelerator so forks inherit the safe behavior.
+
+        Deterministic (Tenet-1 path) note: this takes the LLM text as an argument rather than
+        calling any provider, so the base kit keeps no LLM dependency (see AGENTS.md)."""
+        score = self.assess_confidence(llm_answer, request)
+        if score >= self._FACT_BAR:
+            return llm_answer
+        return self._peering_decline(request, scope_hint=scope_hint)
+
+    #: grounding bar an LLM (exploration-zone) answer must clear (Tenet 4). Sourced from the
+    #: gate's own threshold so a fork's answer-or-decline decision matches what the gate enforces.
+    try:
+        from .governance_gate import CONFIDENCE_FACT_THRESHOLD as _FACT_BAR
+    except Exception:  # pragma: no cover - defensive; gate import should always succeed
+        _FACT_BAR = 0.95
 
     def _answer_from_knowledge(self, request: str) -> str:
         """Deterministic Tier-1 answer: surface the most relevant knowledge entry."""
