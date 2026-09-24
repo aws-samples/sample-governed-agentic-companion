@@ -13,10 +13,54 @@ a secret, and never presents an ungrounded guess as fact — and the boundary th
 > authorization, IAM, and credential-provisioning guidance in the deployment docs before you
 > deploy anything to an AWS account.
 
-This kit is the reference implementation of the AWS Prescriptive Guidance pattern *"The Governed
-Companion."* It is **product- and customer-agnostic**: it ships with two example specialists and a
-tiny generic knowledge base so you can see the governance work in seconds, then swap in your own
+This kit is the reference implementation of the AWS Prescriptive Guidance pattern
+[**"The Governed Companion"**](https://apg-library.amazonaws.com/content/b4106bc4-ec93-473e-b904-303d4be0d1b2/1).
+It is **product- and customer-agnostic**: it ships with two example specialists and a tiny
+generic knowledge base so you can see the governance work in seconds, then swap in your own
 specialists and knowledge.
+
+## What it helps with
+
+**The problem.** On a delivery engagement it's easy to stand up an AI assistant; the hard part is
+making it *safe to trust* — and making the hard-won project knowledge outlast the people who
+learned it. That knowledge (the constraints, the decisions, the gotchas) lives in a few experts'
+heads and scattered docs, so every team rotation and every new customer builder pays to rediscover
+it. And an assistant that confidently invents a config value, or — worse — claims it "deployed to
+prod," is more dangerous than no assistant at all. Most "governed AI" is a hopeful instruction in
+a prompt that the model can ignore.
+
+**The core idea.** Capture the project's knowledge once and put it to work every day — for the
+delivery team *and* the customer's own builders — as if each had a dedicated, project-trained
+expert on tap. The knowledge base is the durable asset: it's versioned and cited, it **self-evolves**
+as experts correct it and confirm new facts (human-reviewed, never auto-promoted), and it grows
+more valuable over the life of the engagement instead of walking out the door with the team. You're
+not renting answers from a generic model — you're building the customer a companion that *knows
+their system* and stays with them.
+
+**What this does.** It gives you a governed *team of agents* whose guardrails are **code, not
+prompts**. Every response passes an always-on governance gate — with **no off switch** — that
+hard-blocks any answer that:
+
+- claims a deployment, apply, promote, restart, or environment mutation happened (a human deploys — always);
+- claims a write to a read-only system of record;
+- leaks a secret or credential; or
+- is an ungrounded LLM guess below the grounding bar.
+
+When it can't ground an answer in the knowledge base, it **says so and offers a path forward**
+instead of guessing.
+
+**Who it's for.** Any ProServe / builder team standing up an agentic assistant for an engagement
+that must be safe-by-construction and auditable — especially in regulated or production-adjacent
+work. It's meant for **everyday use by both audiences**: the delivery team leans on it while
+building, and the customer's own engineers keep using it to operate and extend the system after
+handover. **Fork it, drop in your engagement's specialists and knowledge, and hand the customer a
+governed companion they keep** — the knowledge you captured keeps paying off. MIT-0, so there are
+no strings on reuse.
+
+**Why it's different from a chatbot wrapper.** The core answers *deterministically* with no LLM in
+the path (so factual recall can't hallucinate); the LLM tiers are optional and still gated; and
+every response carries a governance-outcome footer showing which tenets were checked, the measured
+grounding confidence, and the knowledge sources it used. Trust is demonstrated, not asserted.
 
 > **Run it now, no cloud, no LLM:**
 > ```bash
