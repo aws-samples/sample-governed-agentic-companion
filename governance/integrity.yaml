@@ -1,8 +1,15 @@
 principles:
   file: PRINCIPLES.md
-  sha256_hash: 3e2c4f3e8160ac024cdf776afb91514f6db6e11cc8c470a96aadbb4365aaa3d9
-  last_verified: '2026-09-11'
+  sha256_hash: 0c5fcdf64d246150441739d2df3b1cb2d5d4463b3eeaf9d3af61c6336969f21c
+  last_verified: '2026-09-28'
   change_history:
+  - date: '2026-09-28'
+    author: baljay
+    justification: Add Operating Philosophy preamble stating the ReAct + HITL 'human
+      decides / human uses the tool' paradigm the 13 tenets serve; strengthens intent,
+      alters no tenet.
+    previous_sha256: 3e2c4f3e8160ac024cdf776afb91514f6db6e11cc8c470a96aadbb4365aaa3d9
+    new_sha256: 0c5fcdf64d246150441739d2df3b1cb2d5d4463b3eeaf9d3af61c6336969f21c
   - date: '2026-09-11'
     author: <governance-admin>
     justification: Initial governance baseline for the starter kit

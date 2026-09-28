@@ -33,7 +33,7 @@
       }
     },
     "companion-engine": {
-      "_comment": "Governed engine via the AgentCore Gateway. GAC_GATEWAY_URL is the FULL path-based invocations URL, e.g. https://<gateway-id>.gateway.bedrock-agentcore.<region>.amazonaws.com/companion-engine/invocations (NOT just the gateway host); GAC_GATEWAY_TOKEN is a valid enterprise-IdP JWT (Cognito user-client token in the reference deployment). Exposes ask_companion/companion_kb; responses are gated in the cloud. ALTERNATIVE: swap this entry for the local stdio bridge from frontdoor/mcp.example.json (option A) when the gateway is not stood up. Fill both env vars from your gitignored env; never commit a real URL or token.",
+      "_comment": "Governed engine via the AgentCore Gateway. GAC_GATEWAY_URL is the gateway's /mcp URL, e.g. https://<gateway-id>.gateway.bedrock-agentcore.<region>.amazonaws.com/mcp; GAC_GATEWAY_TOKEN is a valid IdP JWT (a Cognito user/PKCE-client token in the reference deployment). The gateway namespaces tools by its target name 'gac', so they surface as gac___ask_companion / gac___companion_kb; responses are gated in the cloud. ALTERNATIVE: swap this entry for the local stdio bridge from frontdoor/mcp.example.json (option A) when the gateway is not stood up. Fill both env vars from your gitignored env; never commit a real URL or token.",
       "type": "http",
       "url": "${GAC_GATEWAY_URL}",
       "headers": {

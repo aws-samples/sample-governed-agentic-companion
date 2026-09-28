@@ -3,8 +3,8 @@
 The SECOND protocol face of the same companion engine. Where the /invocations app
 (../orchestrator/runtime_entrypoint.py) answers plain HTTP invocations, this face serves the
 AgentCore MCP contract — a STATELESS streamable-HTTP MCP server on port 8000 at /mcp — so an
-AgentCore Gateway (protocol-type None + an http-runtime target) can front the governed engine
-directly, removing the need for the local stdio bridge.
+AgentCore Gateway (protocol_type=MCP with an mcp_server target pointing at this /mcp URL) can
+front the governed engine directly, removing the need for the local stdio bridge.
 
 Why stateless + port 8000: the AgentCore MCP-runtime service contract health-checks port 8000
 and manages the session id; a stateful server (server.run()'s streamable-http default) or a
@@ -63,22 +63,28 @@ def build_app():
     Guarded: raises a clear error if the `mcp` SDK is absent (deploy-time dep). The tool
     functions above are importable and testable without the SDK.
     """
+    # The server class was renamed FastMCP -> MCPServer in mcp SDK 2.x. Support BOTH so the
+    # runtime works regardless of which major the container resolves: try the 2.x path first,
+    # fall back to the 1.x path. Both expose the same .tool()/.streamable_http_app() surface.
     try:
-        from mcp.server.fastmcp import FastMCP
-    except ImportError as e:  # pragma: no cover
-        raise RuntimeError(
-            "The `mcp` SDK (mcp>=1.23.0) is required to serve the MCP runtime; it is a "
-            "deploy-time dependency. Install it in the container (see requirements.txt)."
-        ) from e
+        from mcp.server.mcpserver import MCPServer as _McpServer  # mcp >= 2.x
+    except ImportError:
+        try:
+            from mcp.server.fastmcp import FastMCP as _McpServer  # mcp 1.x
+        except ImportError as e:  # pragma: no cover
+            raise RuntimeError(
+                "The `mcp` SDK (mcp>=1.28.0,<2) is required to serve the MCP runtime; it is a "
+                "deploy-time dependency. Install it in the container (see requirements.txt)."
+            ) from e
 
-    # stateless_http=True so the AgentCore Gateway http-runtime target can forward
+    # stateless_http=True so the AgentCore Gateway mcp_server target can forward
     # self-contained requests (each request carries its own context).
     # Bind 0.0.0.0 is REQUIRED and safe here: the process runs inside the AgentCore
     # Runtime container, which is not directly internet-exposed — the platform health-checks
     # and reaches the runtime on this port. Binding 127.0.0.1 would make the runtime
     # unreachable and fail the health check. Network exposure is controlled at the platform
     # (gateway + security groups), not by this bind. (Bandit B104 false positive.)
-    mcp = FastMCP("governed-companion", stateless_http=True, host="0.0.0.0", port=MCP_PORT)  # nosec B104
+    mcp = _McpServer("governed-companion", stateless_http=True, host="0.0.0.0", port=MCP_PORT)  # nosec B104
     mcp.tool()(ask_companion)
     mcp.tool()(companion_kb)
     return mcp.streamable_http_app()

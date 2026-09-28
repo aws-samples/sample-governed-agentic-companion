@@ -9,10 +9,11 @@ AgentCore. It is intentionally thin: it wraps the same engine (`agents/`, `gover
 `knowledge/`) that runs locally — **no reasoning or governance is re-implemented here**. The
 Governance Gate ships inside every image, so every response is gated by construction.
 
-> A human performs every AWS/IdP mutation (Tenet 1). This code is built and deployed by a
-> human via the AgentCore CLI; no agent provisions or invokes against AWS. See
-> [`../docs/DEPLOY.md`](../docs/DEPLOY.md) for the full human-run sequence and the identity/OAuth
-> setup.
+> A human performs every AWS/IdP mutation (Tenet 1). These container images are built and the
+> stack is provisioned by a human via **Terraform** ([`terraform/`](terraform/), `terraform
+> apply`); no agent provisions or invokes against AWS. See [`../docs/DEPLOY.md`](../docs/DEPLOY.md)
+> for the full human-run sequence and [`terraform/README.md`](terraform/README.md) for the resource
+> inventory and identity/OAuth setup.
 
 ## Two protocol faces of one engine
 
@@ -26,31 +27,41 @@ non-root `appuser`, a `HEALTHCHECK`, and they launch under the ADOT `opentelemet
 wrapper so custom + auto-instrumented OTEL export to CloudWatch (BYO containers must do this
 themselves).
 
-## Verified gateway topology (learn from the scar tissue)
+## Gateway topology (native Terraform)
 
-- The gateway is **`protocol-type None`** with an **`http-runtime` target** (ARN-resolved) that
-  points at the **mcp-runtime** — **not** an aggregated `protocol-type MCP` gateway (that shape
-  rejects a runtime target), and not the `/invocations` app.
-- The mcp-runtime must be **stateless** on **port 8000** at `/mcp` (the platform health-checks
-  8000). Running stateful or on another port fails the health check.
-- Inbound is **CUSTOM_JWT** (the builder's enterprise-IdP token). Outbound to the runtime is
-  **OAuth M2M** (the gateway's own `client_credentials` grant + a resource-server scope).
-- `GAC_GATEWAY_URL` is the **full path-based invocations URL** (`…/companion-engine/invocations`),
-  not just the host.
+The gateway is provisioned as **native Terraform** resources (`terraform/gateway.tf`,
+hashicorp/aws ≥ v6.66) — not the AgentCore CLI:
+
+- A **`protocol_type = "MCP"`** gateway with an **`mcp_server` target** whose endpoint is the
+  mcp-runtime's `/mcp` invocations URL. (MCP is the only valid gateway protocol; the target brokers
+  to the mcp-runtime as an upstream MCP server.)
+- The mcp-runtime is **stateless** on **port 8000** at `/mcp` (the platform health-checks 8000).
+  Running stateful or on another port fails the health check.
+- Inbound is **CUSTOM_JWT** (the builder's IdP token, PKCE for the IDE path). Outbound to the
+  runtime is **OAuth M2M** (a Cognito `client_credentials` grant + the `gac-engine/invoke` scope),
+  wired via an AgentCore Identity OAuth2 credential provider.
+- The gateway target is named `gac`, so its tools are namespaced **`gac___ask_companion`** and
+  **`gac___companion_kb`**. `GAC_GATEWAY_URL` is the gateway's `/mcp` URL.
+- An opt-in **identity interceptor** Lambda (ADR-0001) injects the verified builder subject
+  (`X-Gac-Actor-Sub`) into the forwarded request so per-builder memory attributes to a real actor.
 
 ## Files
 
 ```
 agentcore/
-  agentcore.json.example          # CLI project config: both runtimes + the gateway shape (copy -> gitignored agentcore.json)
+  agentcore.json.example          # optional AgentCore CLI project config template (the deployable path is terraform/)
   app/orchestrator/
     runtime_entrypoint.py         # thin /invocations adapter over Orchestrator.handle (gated by construction)
     Dockerfile                    # hardened: non-root + healthcheck + ADOT
     requirements.txt              # patched floors (bedrock-agentcore>=1.18.1, PyJWT>=2.13.0)
   app/mcp_runtime/
-    runtime_mcp_entrypoint.py     # stateless MCP /mcp face; same governed tools (ask_companion, companion_kb)
+    runtime_mcp_entrypoint.py     # stateless MCP /mcp face; same governed tools (ask_companion, companion_kb).
+                                  #   Imports MCPServer (mcp 2.x) with a FastMCP (mcp 1.x) fallback.
     Dockerfile                    # hardened: non-root + healthcheck + ADOT
-    requirements.txt              # + mcp>=1.23.0, uvicorn
+    requirements.txt              # + mcp>=1.28.0,<2, uvicorn
+  interceptor/
+    identity_interceptor.py       # gateway REQUEST interceptor — injects X-Gac-Actor-Sub (ADR-0001)
+  terraform/                      # the deployable IaC stack (see terraform/README.md)
 ```
 
 ## Local sanity (no AWS)
@@ -67,13 +78,18 @@ python -c "import sys; sys.path.insert(0,'.'); \
 A `True` (gated) result means the adapter routed through the governed engine. Full deploy +
 verify is in [`../docs/DEPLOY.md`](../docs/DEPLOY.md).
 
-## Env vars (set in the gitignored `agentcore.json`, never baked in the image)
+## Runtime env (injected by Terraform, never baked in the image)
+
+The runtime env contract is set by the Terraform stack (`terraform/locals.tf`) and is scoped to
+what the engine actually reads (see `agents/kb_overlay.py`). The authoritative list lives in
+[`terraform/README.md`](terraform/README.md) → "the runtime env contract"; the essentials:
 
 | Var | Purpose |
 |---|---|
-| `GAC_KNOWLEDGE_STORE=s3` + `GAC_KB_BUCKET`/`GAC_KB_PREFIX` | Persist the evolving KB to S3 |
-| `GAC_KB_OVERLAY=s3` + `GAC_KB_OVERLAY_PREFIX` | Tier-B curated overlay on top of the image baseline |
-| `GAC_INBOUND_AUTH` | `none` (default; platform validates JWT at the edge) or `jwt` (in-code seam, if the platform forwards the token) |
+| `GAC_KB_OVERLAY=s3` + `GAC_KB_BUCKET` + `GAC_KB_OVERLAY_KEY` | Read the curated Tier-B overlay object from S3 |
+| `GAC_AWS_REGION` | Region for the S3/Bedrock clients |
+| `GAC_DATA_PROTECTION_MODE` / `GAC_PII_BACKEND` (+ `GAC_GUARDRAIL_*`, `GAC_PROPRIETARY_TERMS`, `GAC_PII_REGION`) | The data-protection guard (Tenet 6) |
+| `GAC_ENGINE_ROOT` | Locate the engine on `sys.path` inside the container |
 
-Grant the runtime execution role `s3:GetObject` on the KB prefix — and re-apply it after any
-role-churning redeploy (an idempotent script is the durable fix until the grant is in IaC).
+The shared runtime execution role is granted S3 KB read+write on the KB prefix **by construction**
+in `terraform/iam.tf` — no out-of-band `put-role-policy` step, no role churn to chase.

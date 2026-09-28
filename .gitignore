@@ -5,6 +5,8 @@ __pycache__/
 .pytest_cache/
 # copy from config.yaml.example; may hold per-env values
 config.yaml
+# copy from sources.yaml.example; names real repo paths / bucket names per engagement
+sources.yaml
 # generated link-free plain-text copy of README.md (regenerate as needed)
 README.txt
 .env

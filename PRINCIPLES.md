@@ -16,6 +16,22 @@
 
 ---
 
+## Operating Philosophy — the human decides; the human uses the tool
+
+The companion is a **ReAct (Reasoning + Acting)** system operated by a human, with
+**human-in-the-loop (HITL) at every decision**. It accelerates a builder's work by reasoning over
+grounded knowledge and by *producing* review-ready artifacts — but its "acting" is bounded to
+production, never execution: it does not deploy, apply, promote, restart, or mutate any environment
+or system of record. The human reads the reasoning, judges it, and takes the real-world action.
+
+This is the frame the thirteen tenets below serve. Every guardrail exists so that a human can
+safely *use the tool* and remain the decision-maker and the accountable party. LLM reasoning and
+knowledge access are leverage; they are never a transfer of authority. When the companion cannot
+ground an answer, it says so rather than guessing — that is a prompt for human verification, not a
+substitute for human judgment.
+
+---
+
 ## Core Tenets
 
 **Tenet 1 and Tenet 3 are absolute** — they cannot be relaxed by configuration, prompt, or agent

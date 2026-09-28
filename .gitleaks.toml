@@ -1,0 +1,39 @@
+# gitleaks configuration for the Governed Agentic Companion.
+# Extends the default gitleaks ruleset (AWS keys, private keys, JWTs, generic
+# high-entropy secrets) and adds an allowlist for the DETECTION PATTERNS this repo
+# legitimately contains — the data-protection guard, the starter Bedrock Guardrail,
+# and the leak-scan script all name secret SHAPES on purpose (they detect secrets,
+# they are not secrets). Without this allowlist those regexes trip the scanner.
+#
+# Usage: gitleaks detect --config .gitleaks.toml --redact
+# (also runs via the pre-commit hook and GitLab Secret-Detection.)
+
+title = "Governed Agentic Companion gitleaks config"
+
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Detection patterns and placeholders that are not real secrets."
+
+# Files that intentionally contain secret-SHAPE regexes (detectors, not secrets).
+paths = [
+  '''agents/data_protection\.py''',
+  '''tests/test_data_protection\.py''',
+  '''agentcore/terraform/guardrail\.tf''',
+  '''scripts/leak_scan\.sh''',
+  '''\.gitleaks\.toml''',
+]
+
+# Placeholder/example values used throughout the docs and *.example files.
+regexes = [
+  '''AKIA\[A-Z0-9\]\{16\}''',            # the literal regex string, not a key
+  '''(?:AKIA|ASIA)\[A-Z0-9\]\{16\}''',
+  '''<[A-Z_]+>''',                        # <PLACEHOLDER> tokens in docs/examples
+  '''\$\{GAC_[A-Z_]+\}''',                # ${GAC_...} env references in example configs
+  '''example\.com''',                     # example email/domain placeholders
+]
+
+# Example / template files never hold real credentials by policy.
+[[allowlist.paths]]
+regex = '''.*\.example($|\.[a-z]+$)'''
