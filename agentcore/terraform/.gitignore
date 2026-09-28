@@ -1,0 +1,37 @@
+# Terraform state, vars, and generated artifacts — NEVER commit (may hold account ids,
+# ARNs, endpoints, or front-door config). Only *.tf and *.example files are tracked.
+
+# State (may contain resource attributes / sensitive values)
+*.tfstate
+*.tfstate.*
+.terraform/
+crash.log
+crash.*.log
+
+# NOTE: .terraform.lock.hcl is intentionally NOT ignored — commit it for reproducible
+# provider versions across operators (Terraform best practice).
+
+# Real variable files (the .example is tracked; the real one is not)
+terraform.tfvars
+*.auto.tfvars
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+
+# Generated front-door config + gateway output (populated with real ARNs/URLs)
+generated/
+
+# Plan files — binary plans embed the FULLY RESOLVED config (incl. the M2M client secret and
+# account id), so ignore every plan-output name.
+*.tfplan
+*.plan
+plan.out
+tf.plan
+*.plan.out
+*.out
+
+# Build artifacts — the interceptor Lambda zip is produced by archive_file at plan/apply time
+# from agentcore/interceptor/identity_interceptor.py (the source, which IS tracked). Never
+# commit the generated zip.
+*.zip

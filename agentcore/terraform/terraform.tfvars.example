@@ -1,0 +1,106 @@
+# Copy to terraform.tfvars (GITIGNORED) and fill in for your engagement.
+# Nothing here should carry a real account id, secret, hostname, or customer identifier in
+# the committed .example — those live only in your local, gitignored terraform.tfvars.
+
+# ---- Core ----
+aws_region  = "us-east-1"
+name_prefix = "gac"
+image_tag   = "v0-1-0" # prefer a git short SHA over "latest" for production
+
+# ---- Bedrock model ----
+bedrock_model_id = "us.anthropic.claude-sonnet-4-5-20250929-v1:0"
+
+# ---- Knowledge base (S3) ----
+# Leave kb_bucket_name empty to auto-name: <name_prefix>-kb-<account>-<region>-<suffix>
+kb_bucket_name      = ""
+kb_prefix           = "kb"
+kb_overlay_key      = "kb/curated/overlay.json"
+seed_overlay_object = true
+
+# ---- Session + cross-builder memory (AgentCore Memory) — OPT-IN, READY INFRASTRUCTURE ----
+# The kit's example engine has NO session/memory seam, so memory is OFF by default. Set true
+# in a fork whose engine consumes it (wire GAC_SESSION_STORE/GAC_MEMORY_ID in your runtime).
+enable_memory = false
+# memory_sharing_mode      = "shared"   # or "isolated" (only meaningful when enable_memory=true)
+# memory_event_expiry_days = 30
+
+# ---- Data protection (secrets / PII / proprietary — Tenet 6) ----
+# One unified guard (agents/data_protection.py) runs at every write to any knowledge/memory
+# store. It PRESERVES operational config (ports, topics, endpoints, connection params) and
+# blocks only real secrets + personal data.
+#   balanced (default) — reject secrets, redact PII/proprietary
+#   strict             — reject on any finding
+#   redact             — redact everything, never reject
+data_protection_mode = "balanced"
+
+# Optional managed PII backend (OFF by default = deterministic regex only, offline/free).
+#   none | comprehend | guardrails
+pii_backend = "none"
+
+# Optional starter Bedrock Guardrail (defense in depth WITH data_protection.py). When true,
+# Terraform CREATES a guardrail (PROMPT_ATTACK + AWS-key/PEM/JWT regex denies + PII) and wires
+# its id/version to the runtime. If you set pii_backend="guardrails", either set this true OR
+# supply your own guardrail_id below.
+create_bedrock_guardrail = false
+# guardrail_id      = "gr-xxxxxxxxxxxx"   # bring-your-own (only if create_bedrock_guardrail=false)
+# guardrail_version = "DRAFT"
+
+# Engagement code names to always redact from any store (customer-agnostic rule).
+# Comma-separated; use code names, NOT secrets (passed as a runtime env var).
+# proprietary_terms = "ProjectFoo,Acme"
+
+# ---- Auth mode: choose ONE -------------------------------------------------------------
+
+# (A) Cognito — Terraform creates the IdP (reference deployment)
+auth_mode = "cognito"
+# Cognito hardening (defaults shown; matches the AWS AgentCore reference samples):
+cognito_advanced_security_mode = "ENFORCED"  # ENFORCED | AUDIT | OFF
+cognito_mfa_mode               = "OPTIONAL"  # OPTIONAL (default; TOTP available) | ON (prod) | OFF (throwaway dev only)
+
+# (B) Microsoft Entra ID — use an existing tenant (Terraform creates no IdP)
+# auth_mode                    = "entraid"
+# entraid_discovery_url        = "https://login.microsoftonline.com/<tenant-id>/v2.0/.well-known/openid-configuration"
+# entraid_frontdoor_client_ids = ["<entra-app-registration-client-id>"]
+# entraid_m2m_client_id        = "<entra-client-credentials-app-id>" # only if deploy_gateway=true
+
+# (C) None — UNAUTHENTICATED, internal test only (isolated dev account)
+# auth_mode             = "none"
+# allow_unauthenticated = true   # required interlock to confirm you mean it
+
+# ---- Gateway ----
+# Target topology: front door -> AgentCore Gateway (validates JWT) -> mcp_runtime.
+# Requires auth_mode cognito|entraid.
+deploy_gateway = false
+
+# Gateway error verbosity. Empty ("") is the production default (redacted errors). Set "DEBUG"
+# ONLY while diagnosing a broken tools/call hop (it leaks ARNs/role names), then set back.
+gateway_exception_level = ""
+
+# MCP protocol versions the gateway may negotiate. Allow BOTH observed versions — pinning to
+# one risks "Unsupported protocol version". Set [] to let the gateway pick its newest.
+gateway_mcp_supported_versions = ["2025-06-18", "2025-03-26"]
+
+# Identity interceptor (ADR-0001 Phase 2). When true (default), a REQUEST interceptor Lambda
+# injects the VERIFIED builder subject as X-Gac-Actor-Sub, so per-builder memory works through
+# the gateway with a real actor. Requires deploy_gateway=true.
+enable_identity_interceptor      = true
+interceptor_reserved_concurrency = 10
+
+# ECR image-tag immutability (checkov CKV_AWS_51). true (default) = a pushed tag cannot be
+# overwritten; compatible with the versioned-tag deploy pattern.
+ecr_immutable_tags = true
+
+# IAM Access Analyzer (kics). OFF by default — a landing zone usually owns it. Set true ONLY
+# when this stack owns the account baseline (e.g. an isolated sandbox).
+enable_access_analyzer = false
+
+# Outbound gateway->runtime M2M credential: nothing to set. The gateway authenticates via the
+# native AgentCore Identity OAuth2 credential provider (it stores the Cognito client_secret in
+# its own managed Token Vault) — the kit does NOT create a hand-managed Secrets Manager copy.
+# BYO override only (rare): a fork wanting a readable copy on a NON-gateway path can point at an
+# existing secret it manages elsewhere (e.g. an Entra client-credentials secret):
+# gateway_m2m_secret_arn = "arn:aws:secretsmanager:<region>:<account>:secret:<name>"
+
+# ---- Build + front-door config ----
+auto_build_push_images    = true
+generate_frontdoor_config = true

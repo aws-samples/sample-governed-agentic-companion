@@ -70,6 +70,31 @@ grounding confidence, and the knowledge sources it used. Trust is demonstrated, 
 > echo "I have deployed to production." | ./run.sh gate   # watch the gate BLOCK it
 > ```
 
+## How to think about this tool — the human decides, always
+
+Read this before you use the companion. It accelerates your work and puts a project-trained
+expert and a reasoning engine at your fingertips — but **at its core, the human makes every
+decision and the human uses the tool.** The companion never acts on the world on its own.
+
+- **ReAct (Reasoning + Acting), operated by you.** The engine *reasons* over the knowledge base
+  and *acts* only by producing review-ready artifacts — an answer, a plan, a config, a command to
+  run, a diff to apply. It does not deploy, apply, promote, restart, or mutate anything. You read
+  the reasoning, judge it, and take the action if you agree.
+- **Human-in-the-loop (HITL) at every decision.** Nothing the companion produces is
+  self-executing. A deployment is run by a human (Tenet 1); a knowledge correction is promoted by
+  a human (Tenet 8); a system of record is never written by the agent (Tenet 3). The governance
+  gate exists to keep those boundaries even if a model tries to cross them.
+- **A tool, not an authority.** Treat every answer as *input to your judgment*, not a verdict.
+  The governance footer (trust zone, grounding confidence, cited sources) is there so you can
+  weigh it — a verified/deterministic answer is grounded by construction; an exploration-zone
+  (LLM) answer is a claim to verify. When the companion can't ground an answer, it says so rather
+  than guessing — that is your cue to verify, not to trust.
+- **You own the outcome.** The companion makes you faster and better-informed; it does not
+  transfer accountability. The right decision — and the responsibility for it — stays with you.
+
+Everything below (the gate, the tenets, the trust zones) is the machinery that *enforces* this
+human-decides model so you can rely on it.
+
 ## What you get
 
 - **A governed Orchestrator** that classifies each request and routes it to one specialist.
@@ -169,12 +194,30 @@ governed-agentic-companion/
 │   └── app/                   # container entrypoint(s) — /invocations + /mcp faces
 ├── scripts/
 │   └── rebaseline_integrity.py # re-baseline the PRINCIPLES.md hash after a governance change
-├── docs/                      # DEPLOY.md, FRONT-DOORS.md, GOVERNANCE.md
+├── docs/                      # ARCHITECTURE, SECURITY, COST, DEPLOY, FRONT-DOORS, GOVERNANCE (+ setup/)
 ├── tests/                     # run with no AWS / no LLM
 ├── config.yaml.example        # copy to config.yaml (gitignored)
 ├── run.sh / main.py           # the governed CLI (status / ask / gate)
 └── requirements.txt
 ```
+
+## Documentation
+
+Six focused documents, each reviewable on its own (and written to survive public security scanning
+— no real account ids, ARNs, endpoints, or secrets):
+
+1. **[System Overview & Architecture](docs/ARCHITECTURE.md)** — component topology (with diagram),
+   the three-tier execution model, trust boundaries, and the request/governance data flow.
+2. **[Security](docs/SECURITY.md)** — identity & authorization, least-privilege IAM, data
+   protection, the always-on boundary, security scanning, and an accepted-security-debt table.
+3. **[Cost analysis](docs/COST.md)** — the pay-per-use cost model, a sample monthly estimate, the
+   cost drivers/levers, right-sizing guidance, and teardown.
+4. **[Deploy & implementation](docs/DEPLOY.md)** — the human-run Terraform sequence to provision
+   the AgentCore stack, verify it end-to-end, and tear it down.
+5. **[Integration (Kiro & Claude Code)](docs/FRONT-DOORS.md)** — connect either IDE to the
+   companion as an MCP server over the AgentCore Gateway (native OAuth/PKCE + fallbacks).
+6. **[Governance & operations](docs/GOVERNANCE.md)** — how the boundary is enforced as code, the
+   operations runbook and change-management handshake, and the security standards this kit implies.
 
 ## Governance, honestly
 

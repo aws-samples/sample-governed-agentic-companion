@@ -1,72 +1,118 @@
-# Deploy to Amazon Bedrock AgentCore (human-run — Tenet 1)
+<!-- Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved. -->
+<!-- SPDX-License-Identifier: MIT-0 -->
 
-> **⚠️ Sample code — not for production as-is.** This deployment guide is provided for
-> demonstration and educational purposes. The IAM grants, OAuth/OIDC and Cognito setup, and
-> credential provisioning shown here are illustrative and **not intended for production use
-> without additional security review, testing, and hardening** for your account and threat model.
+# Deploy & implementation — Amazon Bedrock AgentCore (human-run, Tenet 1)
 
-The companion runs locally on the deterministic tier with no AWS. This is how you put it on
-Amazon Bedrock AgentCore so builders reach it through the AgentCore Gateway. **A human performs
-every AWS/IdP mutation** — no agent deploys, provisions, or invokes against AWS.
+This is the implementation guide for putting the companion on Amazon Bedrock AgentCore with the
+Terraform stack under [`../agentcore/terraform/`](../agentcore/terraform/). The companion runs
+locally with no AWS; this page is how you provision the cloud footprint so builders reach it
+through the AgentCore Gateway.
 
-> **Reference code lives in [`../agentcore/`](../agentcore/).** Two hardened, thin runtime
-> faces wrap the same governed engine: `app/orchestrator/` (the `/invocations` face) and
-> `app/mcp_runtime/` (the stateless `/mcp` face the Gateway targets), plus
-> `agentcore.json.example` (the CLI project config for both runtimes + the gateway shape) and
-> `agentcore/README.md`. This page is the human-run sequence; that directory is what you build
-> and deploy.
+> **A human runs every AWS mutation (Tenet 1).** No agent in this repo runs Terraform, builds
+> images, or invokes against AWS. Terraform *prepares* the plan; a human runs `terraform apply`.
+
+> **⚠️ Sample code — not for production as-is.** The IAM, identity, network, and credential
+> settings are illustrative. Review them against your account and threat model, and see the
+> accepted-security-debt table in [`SECURITY.md`](SECURITY.md) before production use.
 
 ## Prerequisites
 
-- An AWS account with **Amazon Bedrock** model access (for Tier-3; Tier-1 needs none).
-- **Amazon Bedrock AgentCore** access — Runtime, Gateway, Identity, Observability.
-- An **OIDC IdP** (Amazon Cognito reference) for the builder token + the gateway M2M credential.
-- A container build toolchain + the AgentCore CLI.
-- An **S3 bucket** for the evolving KB + the Tier-B overlay (the bucket name embeds the account
-  id → injected as a runtime env var, never baked into the image).
+- **Terraform ≥ 1.6**, the **AWS CLI**, and **Docker** (with `buildx`) on PATH.
+- AWS credentials for a human operator (`AWS_PROFILE` / `AWS_REGION`) able to create ECR, IAM, S3,
+  KMS, Cognito, Secrets Manager, Lambda, and Bedrock AgentCore resources.
+- A Region where **AgentCore Runtime is GA** and your Bedrock **model / inference profile** is
+  available. Confirm the exact inference-profile id for your Region first — a `us.` profile only
+  resolves in US Regions; use the `au.`/`apac.` profile in Asia-Pacific, etc.:
+  ```bash
+  aws bedrock list-inference-profiles --region <REGION> \
+    --query "inferenceProfileSummaries[?contains(inferenceProfileId,'claude')].[inferenceProfileId,status]" --output text
+  ```
+- Amazon Bedrock **model access enabled** for your chosen model in that Region.
 
-## Identity & OAuth (two distinct flows — don't conflate them)
+## What gets deployed
 
-1. **Inbound (builder JWT).** Create a Cognito **user pool** (the OIDC issuer) + an **app client**
-   (its id = the JWT audience). The builder authenticates (MFA) and the IDE presents
-   `Authorization: Bearer <JWT>`. The gateway's inbound authorizer validates it.
-   - Token nuance: an authorizer that checks `client_id` validates the **access token**; an `aud`
-     check reads the **id token**. Decode a sample and match the token type to your authorizer.
-2. **Outbound (gateway M2M).** Create a second app client for the **`client_credentials`** flow,
-   a **resource server** with a scope (e.g. `companion-gateway/invoke`), and grant the client that
-   scope. This client id + secret are the gateway's outbound credential. **Rotate the secret if it
-   is ever exposed;** store it only in the platform credential provider.
+The stack provisions two AgentCore runtimes (HTTP `/invocations` + stateless MCP `/mcp`), two ECR
+repos, a shared least-privilege execution role, a private CMK-encrypted S3 knowledge base, and —
+as independent **opt-ins** — Cognito identity, an AgentCore Gateway + M2M credential + target, an
+identity interceptor Lambda, AgentCore Memory, and a Bedrock Guardrail. See
+[`../agentcore/terraform/README.md`](../agentcore/terraform/README.md) for the full resource
+inventory and every input, and [`COST.md`](COST.md) for what each opt-in costs.
 
-## Verified gateway topology
+## Configure
 
-- A **`protocol-type None`** gateway with an **`http-runtime` target** (ARN-resolved) — NOT an
-  aggregated `protocol-type MCP` gateway (that rejects a runtime target).
-- The runtime exposes a **stateless MCP** face (`/mcp`) on **port 8000** (the platform
-  health-checks that port). Binding elsewhere or running stateful fails the health check.
-- Inbound **CUSTOM_JWT**; outbound **OAuth M2M**. `GAC_GATEWAY_URL` is the **full path-based
-  invocations URL** (`…/companion-engine/invocations`), not just the host.
-
-## Sequence
-
-```text
-1. Build + deploy the runtime container (gate + Tier-A KB baked in; the gate enforces by construction).
-2. Provision identity (inbound JWT app client; outbound M2M client + resource server + scope).
-3. Provision the S3 KB bucket; set the runtime env (evolving-KB store + Tier-B overlay prefix);
-   grant the runtime execution role s3:GetObject on the KB prefix.
-   NOTE: each runtime gets its OWN execution role — grant the read to the RIGHT role, and
-   re-apply after any role-churning redeploy (an idempotent script is the durable fix until the
-   grant is in IaC).
-4. Stand up the gateway: protocol-None + http-runtime target -> the MCP runtime; inbound
-   CUSTOM_JWT; outbound M2M. Record the full invocations URL.
-5. Point the builder IDE at the gateway (or the local bridge) with GAC_GATEWAY_URL + the token.
-6. Verify: from the IDE, ask a question that hits a known KB marker; confirm a GATED answer with
-   the governance-outcome footer.
+```bash
+cd agentcore/terraform
+cp terraform.tfvars.example terraform.tfvars      # gitignored — fill in for your engagement
 ```
 
-## Verification checklist
+Key inputs (all documented in `variables.tf`):
 
-- [ ] `./run.sh status` reports the governance integrity check **passing**.
-- [ ] A deterministic question answers on Tier-1 with **no** LLM call.
-- [ ] A boundary-crossing prompt (fake "I deployed it", or a secret) is **blocked** and the block
-  notice **withholds** the original text.
-- [ ] The end-to-end IDE → gateway → runtime → KB path returns a **gated** answer with the footer.
+| Input | Purpose |
+|---|---|
+| `aws_region` / `name_prefix` | Where to deploy; resource-name prefix |
+| `bedrock_model_id` | Inference-profile id valid in `aws_region` |
+| `auth_mode` | `cognito` (create IdP) / `entraid` (existing tenant) / `none` (test only) |
+| `deploy_gateway` | Create the gateway front door (requires cognito/entraid) |
+| `enable_identity_interceptor` | Verified per-builder identity propagation (ADR-0001) |
+| `enable_memory` | Provision AgentCore Memory (opt-in ready infrastructure) |
+| `create_bedrock_guardrail` / `pii_backend` | Managed guardrail defense in depth |
+| `cognito_mfa_mode` / `cognito_advanced_security_mode` | Cognito hardening |
+
+## Deploy (the sequence a human runs)
+
+```bash
+export AWS_PROFILE=<your-profile>
+terraform init
+terraform plan -out tf.plan      # review the plan — you decide
+terraform apply tf.plan          # builds+pushes both images, then creates the stack
+```
+
+Notes:
+- `apply` runs the build/push helper for both arm64 images before creating the runtimes.
+- ECR tags are **immutable** by default — bump `image_tag` for each redeploy (e.g. `v0-1-0` →
+  `v0-1-1`); re-pushing the same tag is rejected by design.
+
+## Verify (end-to-end)
+
+1. **Runtimes READY:**
+   ```bash
+   for r in $(terraform output -raw orchestrator_runtime_arn | sed 's#.*/##') \
+            $(terraform output -raw mcp_runtime_arn | sed 's#.*/##'); do
+     aws bedrock-agentcore-control get-agent-runtime --agent-runtime-id "$r" \
+       --region <REGION> --query '[agentRuntimeName,status]' --output text
+   done
+   ```
+2. **MCP runtime serving (not crash-looping):** check
+   `/aws/bedrock-agentcore/runtimes/<mcp-runtime>-DEFAULT` for `POST /mcp ... 200 OK`.
+3. **Gateway target created:** a `FAILED` target means the MCP runtime errored on boot — read its
+   CloudWatch logs (a missing/incompatible dependency is the usual cause).
+4. **Governed invocation:** connect an IDE (see [`FRONT-DOORS.md`](FRONT-DOORS.md)) and ask a
+   question that hits a known KB marker; confirm a **gated** answer with the governance footer.
+5. **Local integrity:** `./run.sh status` reports the governance integrity check passing.
+
+## Teardown
+
+```bash
+cd agentcore/terraform
+terraform destroy      # a human runs this
+```
+
+Buckets/repos use `force_destroy` and the M2M secret uses a 0-day recovery window (dev-friendly);
+for production set those to retain (SD-1 in [`SECURITY.md`](SECURITY.md)). KMS keys enter a
+pending-deletion window rather than deleting immediately.
+
+## Troubleshooting
+
+| Symptom | Cause / fix |
+|---|---|
+| `pii_backend="guardrails"` fails at plan | Set `create_bedrock_guardrail=true` or supply `guardrail_id` |
+| Runtime `bedrock:InvokeModel` denied | The inference-profile id is not valid in `aws_region`, or model access is off |
+| Gateway target `FAILED` | MCP runtime crashed on boot — check its CloudWatch logs |
+| `image tag ... immutable` on redeploy | Bump `image_tag` (immutable tags are intentional) |
+
+## Related resources
+
+- [`../agentcore/terraform/README.md`](../agentcore/terraform/README.md) — full inputs & resources.
+- [`FRONT-DOORS.md`](FRONT-DOORS.md) — connect Kiro / Claude Code after deploy.
+- [`SECURITY.md`](SECURITY.md) — security model + accepted security debt.
+- [`COST.md`](COST.md) — what the deployed footprint costs.

@@ -24,14 +24,14 @@
   },
 
   "option_B_gateway_http": {
-    "_comment": "Point the IDE's MCP client (an http server) at the AgentCore Gateway's full path-based invocations URL with a Bearer JWT. Keep the token fresh with frontdoor/gateway_token.py (print/write-env/daemon). Use this once the gateway is stood up; keep option A as the offline fallback.",
+    "_comment": "Point the IDE's MCP client (an http server) at the AgentCore Gateway's /mcp URL with a Bearer JWT. Keep the token fresh with frontdoor/gateway_token.py (print/write-env/daemon). The gateway namespaces tools by its target name 'gac' (gac___ask_companion / gac___companion_kb). Use this once the gateway is stood up; keep option A as the offline fallback. TIP: Kiro can instead use a native oauth/PKCE block (see docs/FRONT-DOORS.md) so it auto-refreshes the token.",
     "mcpServers": {
       "companion-engine": {
         "type": "http",
         "url": "${GAC_GATEWAY_URL}",
         "headers": { "Authorization": "Bearer ${GAC_GATEWAY_TOKEN}" },
         "disabled": false,
-        "autoApprove": ["companion_kb"]
+        "autoApprove": ["gac___companion_kb"]
       }
     }
   }

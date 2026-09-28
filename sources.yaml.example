@@ -1,0 +1,68 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# Governed Agentic Companion — Knowledge Sources (entry-point contract)
+# ─────────────────────────────────────────────────────────────────────────────
+# This file maps the knowledge sources (application source code, docs, IaC, …)
+# that a fork's ingestion hook can learn from, so the companion can "gain
+# application knowledge from source" and turn it into curated Tier-B knowledge.
+#
+# Copy to sources.yaml (GITIGNORED) and fill in for YOUR engagement. Paths may be
+# local filesystem paths OR git URLs.
+#
+# IMPORTANT — this is a CONTRACT, not shipped behaviour. The starter kit's EXAMPLE
+# engine ships NO ingestion consumer (it reads the curated Tier-B overlay from S3,
+# see agents/kb_overlay.py). A fork wires an ingestion hook that:
+#   1. reads this manifest,
+#   2. walks each source's include/exclude globs,
+#   3. sanitizes every chunk through agents/data_protection.py (Tenet 6 — secrets
+#      rejected, PII/proprietary redacted BEFORE anything is stored),
+#   4. writes the result as a human-reviewed Tier-B overlay entry
+#      (kb/curated/overlay.json) — the promotion path the kit already ships.
+# See docs/setup/source-knowledge.md for the two entry options (offline/local and
+# AWS Transform-style) and the honest "what's wired vs. what you wire" split.
+#
+# Keep it customer-agnostic in anything you commit: the .example is tracked, your
+# real sources.yaml is gitignored precisely because it names real paths/buckets.
+# ─────────────────────────────────────────────────────────────────────────────
+
+# ─── Application Source Code ────────────────────────────────────────────────
+application_source:
+  description: >
+    The primary application source code the companion should learn from
+    (any language/stack — the kit is application-agnostic).
+  path: ""                     # local path OR git URL, e.g. /repos/my-app or git@github.com:org/my-app.git
+  include: ["**/*"]            # globs to ingest
+  exclude:                     # noise a fork almost always wants to skip
+    - "**/node_modules/**"
+    - "**/.venv/**"
+    - "**/venv/**"
+    - "**/dist/**"
+    - "**/build/**"
+    - "**/*.min.*"
+    - "**/*.lock"
+  used_by: ["developer"]       # example specialist (replace with your own)
+  # OPTIONAL — AWS Transform (ATX)-style staging target for teams that push source
+  # bundles to a managed analysis service instead of ingesting locally. Leave blank
+  # to keep ingestion local-only. Never commit real bucket names (use sources.yaml).
+  atx:
+    s3_bucket: ""              # engagement-specific bundle bucket
+    s3_prefix: ""              # optional key prefix, e.g. "app-source/"
+
+# ─── Documentation ──────────────────────────────────────────────────────────
+docs:
+  description: >
+    Design docs, ADRs, runbooks, READMEs — the narrative knowledge that explains
+    WHY the code is shaped the way it is.
+  path: ""                     # e.g. /repos/my-app/docs or a wiki export
+  include: ["**/*.md", "**/*.rst", "**/*.txt", "**/*.adoc"]
+  exclude: []
+  used_by: ["platform", "security"]
+
+# ─── Infrastructure ─────────────────────────────────────────────────────────
+infrastructure:
+  description: >
+    Infrastructure-as-code (Terraform / CDK / CloudFormation), CI/CD pipelines,
+    and deployment/config that describe how the app runs.
+  path: ""                     # e.g. /repos/my-app-infra
+  include: ["**/*.tf", "**/*.yaml", "**/*.yml", "**/*.json", "**/Dockerfile*"]
+  exclude: ["**/.terraform/**", "**/*.tfstate*", "**/cdk.out/**"]
+  used_by: ["platform"]

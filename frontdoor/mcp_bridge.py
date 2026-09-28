@@ -59,7 +59,7 @@ def main():
         except ImportError as e:
             raise SystemExit(
                 "The MCP SDK is not installed in this environment. Install the bridge deps:\n"
-                "  pip install 'mcp>=1.23.0' boto3 requests\n"
+                "  pip install 'mcp>=1.28.0,<2' boto3 requests\n"
                 f"(import error: {e})"
             )
 

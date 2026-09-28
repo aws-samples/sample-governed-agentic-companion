@@ -7,6 +7,7 @@ Add/replace entries in build_specialists() — routing and gating come for free.
 
 from typing import Dict, List, Tuple
 
+from .external_tool_specialist import ExternalToolSpecialist
 from .platform_specialist import PlatformSpecialist
 from .security_specialist import SecuritySpecialist
 
@@ -20,4 +21,10 @@ def build_specialists() -> Dict[str, Tuple[object, List[str]]]:
         "security": (SecuritySpecialist(),
                      ["security", "secret", "credential", "auth", "token", "tls", "egress",
                       "permission", "access", "encrypt"]),
+        # A GUIDANCE-ONLY external-tool specialist: it plans a CLI/tool run and emits the
+        # command for a human to execute — it never runs the tool (the generic form of a
+        # domain "external-tool agent"). Replace or remove per engagement.
+        "external_tool": (ExternalToolSpecialist(),
+                          ["cli", "tool", "command", "scan", "run", "generate", "bundle",
+                           "prepare", "plan"]),
     }

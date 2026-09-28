@@ -1,7 +1,7 @@
 # Governed Companion — AgentCore MCP-Runtime container (the /mcp face)
 # ---------------------------------------------------------------------------
 # The SECOND protocol face of the same engine: serves the AgentCore MCP contract (stateless
-# streamable-HTTP /mcp) so a protocol-None Gateway + http-runtime target can front the governed
+# streamable-HTTP /mcp) so a protocol_type=MCP Gateway + mcp_server target can front the governed
 # engine directly. Same engine + gate as the /invocations image; the addition is the MCP SDK.
 #   docker build -f agentcore/app/mcp_runtime/Dockerfile -t gac-mcp-runtime .
 

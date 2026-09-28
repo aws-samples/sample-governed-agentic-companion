@@ -13,7 +13,7 @@ a human deploys (Tenet 1); systems of record stay read-only (Tenet 3).
 
 - A deployed AgentCore runtime (see `../agentcore/README.md`) and its ARN.
 - A Cognito user-pool app client for the runtime's CUSTOM_JWT authorizer.
-- Bridge deps in the clone's venv: `pip install 'mcp>=1.23.0' boto3 requests`.
+- Bridge deps in the clone's venv: `pip install 'mcp>=1.28.0,<2' boto3 requests`.
 - A gitignored env file with your identity + runtime config (never commit it):
   ```bash
   # ~/.companion-frontdoor.env  (chmod 600)
@@ -44,12 +44,14 @@ caches and pre-expiry-refreshes the token; nothing is logged but token length an
 
 ## Option B — Direct AgentCore Gateway HTTP path
 
-Point the IDE's MCP client (an `http` server) at the gateway's **full path-based invocations URL**
-with a Bearer JWT. Keep the token fresh with `gateway_token.py`:
+Point the IDE's MCP client (an `http` server) at the gateway's **`/mcp` URL** with a Bearer JWT.
+The gateway namespaces tools by its target name `gac` (`gac___ask_companion` / `gac___companion_kb`).
+Keep the token fresh with `gateway_token.py` (or use Kiro's native oauth/PKCE block — see
+`../docs/FRONT-DOORS.md`):
 
 ```bash
 source ~/.companion-frontdoor.env
-export GAC_GATEWAY_URL='https://<gateway-id>.gateway.bedrock-agentcore.<region>.amazonaws.com/companion-engine/invocations'
+export GAC_GATEWAY_URL='https://<gateway-id>.gateway.bedrock-agentcore.<region>.amazonaws.com/mcp'
 export GAC_GATEWAY_TOKEN=$(python3 frontdoor/gateway_token.py print)   # one-shot
 # or keep an env file fresh for a long session:
 python3 frontdoor/gateway_token.py daemon &

@@ -1,0 +1,13 @@
+# Checkov configuration for the Governed Agentic Companion Terraform stack.
+# These skips are REVIEWED, documented tradeoffs for a single-account STARTER KIT — each maps to
+# an entry in docs/SECURITY.md (the accepted-security-debt SD-N table). They are also declared
+# inline (# checkov:skip=...) on the resources; this file is the belt-and-braces repo-level copy
+# so the skip is honored regardless of the analyzer's inline-parsing support. A fork that hardens
+# for production should REMOVE the corresponding skip and implement the control.
+skip-check:
+  - CKV_AWS_117  # Lambda-in-VPC: the interceptor makes no data-plane calls; VPC adds cold-start latency for no gain (SD-6).
+  - CKV_AWS_272  # Lambda code-signing: built from in-repo single-file source pinned by source_code_hash; a Signer profile is disproportionate for a starter kit.
+  - CKV_AWS_144  # S3 cross-region replication: disproportionate for a small single-region KB / access-log bucket in a starter kit (versioned + CMK/lifecycle).
+  - CKV_AWS_145  # S3 KMS-by-default: applies to the access-LOG bucket, which is SSE-S3 by design — logs are operational metadata, not secrets (SD-3).
+  # (CKV_AWS_304 no longer applies: the kit no longer creates a hand-managed Secrets Manager M2M
+  #  secret — the gateway uses the AgentCore Identity OAuth2 credential provider. See SD-5.)
