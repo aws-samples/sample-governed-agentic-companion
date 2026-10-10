@@ -24,6 +24,15 @@ resource "terraform_data" "auth_guards" {
       error_message = "Refusing to deploy a Gateway with auth_mode=\"none\": that would expose an unauthenticated tool surface. Use cognito or entraid when deploy_gateway=true."
     }
 
+    # The runtimes use network_mode="PUBLIC". Combined with auth_mode="none" (no inbound JWT
+    # authorizer) that is a PUBLICLY NETWORK-ACCESSIBLE endpoint with NO authentication at the
+    # AgentCore layer. Refuse that combination unless it is explicitly acknowledged via
+    # allow_unauthenticated=true, and even then only in a fully isolated test account.
+    precondition {
+      condition     = !local.auth_is_none || var.allow_unauthenticated
+      error_message = "Refusing network_mode=\"PUBLIC\" runtimes with auth_mode=\"none\": that exposes an UNAUTHENTICATED public endpoint. Use auth_mode=cognito|entraid, or set allow_unauthenticated=true only inside an isolated test account."
+    }
+
     # The Guardrails PII backend needs a guardrail: EITHER Terraform creates one
     # (create_bedrock_guardrail=true) OR you supply an existing guardrail_id. Fail loud at
     # plan time rather than a silent no-op at runtime.

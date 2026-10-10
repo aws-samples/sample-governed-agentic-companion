@@ -20,6 +20,9 @@ resource "aws_bedrockagentcore_agent_runtime" "orchestrator" {
   }
 
   network_configuration {
+    # PUBLIC = the AgentCore-managed public network. Inbound is gated by the CUSTOM_JWT
+    # authorizer below. NEVER pair network_mode="PUBLIC" with auth_mode="none" outside an
+    # isolated test account — guards.tf refuses that combination unless allow_unauthenticated=true.
     network_mode = "PUBLIC"
   }
 
@@ -63,6 +66,9 @@ resource "aws_bedrockagentcore_agent_runtime" "mcp_runtime" {
   }
 
   network_configuration {
+    # PUBLIC = the AgentCore-managed public network. Inbound is gated by the CUSTOM_JWT
+    # authorizer below. NEVER pair network_mode="PUBLIC" with auth_mode="none" outside an
+    # isolated test account — guards.tf refuses that combination unless allow_unauthenticated=true.
     network_mode = "PUBLIC"
   }
 

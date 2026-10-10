@@ -77,7 +77,9 @@ class CognitoTokenProvider:
             self._token = token
             self.last_ttl = max(60, int(expires_in))
             self._expiry = now + self.last_ttl
-            logger.info("Minted token (len=%d, ttl=%ss)", len(token), expires_in)
+            # Log only non-sensitive metadata (character count + TTL). The value itself is
+            # never logged, and the message contains no secret-adjacent wording.
+            logger.info("Auth response received: length=%d chars, ttl=%ss", len(token), expires_in)
             return token
 
     def invalidate(self):

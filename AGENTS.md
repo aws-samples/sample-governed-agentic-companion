@@ -54,13 +54,43 @@ by construction. A specialist that cannot ground an answer declines honestly rat
 
 ## Front doors
 
-- **CLI** — `./run.sh status | ask | gate | bible`.
+- **CLI** — `./run.sh status | ask | gate | bible | audit | feedback | plan | verify`.
 - **Claude Code plugin** — `plugin/` (orchestrator + example specialists as sub-agents, a Skill,
   MCP wiring, and a `Stop`-hook governance backstop). MIT-0.
 - **Cloud (MCP)** — reach a deployed AgentCore runtime via the local stdio bridge
   (`frontdoor/mcp_bridge.py`) or the gateway HTTP path. See `docs/FRONT-DOORS.md`.
+- **Local gate MCP server** — `frontdoor/gate_mcp_server.py` exposes the gate as a local,
+  deterministic MCP tool (`govern_artifact`) — no AWS/runtime needed.
+- **Agentic-SDLC governance hook** — `integrations/aidlc/` wires the gate as a `Stop`-style
+  command hook so an agentic SDLC (AI-DLC or any harness) gains GAC's unbypassable floor.
 - **Onboarding** — `onboarding/install-companion-frontdoor.sh` (+ `.ps1`) wires Kiro + Claude
   Code routing pointers without touching a team's own files.
+
+## v2.0.0 capabilities (the uplift)
+
+GAC v2 keeps the governance core unchanged (same 13 tenets; the gate still has no off switch) and
+adds a self-evolution loop plus the surfaces that let it serve as a governance substrate:
+
+- **Action-level audit trail** (`agents/audit.py`, `./run.sh audit`) — every gated response, from
+  any front door, appends a metadata-only event (front door, agent, trust zone, confidence,
+  sources, decision, findings) to `.audit/trail.jsonl` (gitignored). Observability, not a second
+  enforcement path — the gate still blocks.
+- **Feedback / evolution loop** (`agents/feedback.py`, `./run.sh feedback`) — every work item
+  emits a signal; a grounding gap stages a *candidate* learning that a human reviews and promotes
+  to a Tier-B overlay entry. Staged → reviewed → promoted (Tenet 8); never self-written; Tier-A
+  stays locked.
+- **Layered memory** (`agents/memory_layers.py`) — org/team/project precedence over the Tier-A/
+  Tier-B KB; `project > team > org`; a layer never escalates trust. No-op by default.
+- **Staged mode** (`agents/staged.py`, `./run.sh plan`) — opt-in intent → plan (checkboxed) →
+  **human approval** → execute one *gated* step at a time. "Executing" a step produces a
+  review-ready artifact; it never deploys or mutates anything (Tenet 1).
+- **Sensors + parity guard** (`agents/sensors.py`, `scripts/parity_check.py`, `./run.sh verify`)
+  — advisory inspectable verification manifests (report, never block) + a determinism/parity
+  check proving every gate front door reaches the same verdict for the same input.
+- **Governance substrate for an agentic SDLC** — the gate as a `Stop`-hook + a local MCP tool so
+  an agentic SDLC can run an AI-produced artifact through the unbypassable floor before accepting
+  it. This is a *technical integration*, **not** a partnership or endorsement, and GAC does not
+  replace an agentic SDLC — it is the complementary safety layer (see `integrations/aidlc/README.md`).
 
 ## Security considerations
 

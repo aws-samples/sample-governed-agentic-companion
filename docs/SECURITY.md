@@ -80,7 +80,7 @@ the honesty/audit signal. See [`GOVERNANCE.md`](GOVERNANCE.md) for the detector 
 ## Network posture
 
 - Runtimes run in the AgentCore-managed network (`PUBLIC` mode in this kit); exposure is controlled
-  at the gateway (JWT authorizer) + the platform, not by the container bind.
+  at the gateway (JWT authorizer) and by AgentCore Runtime, not by the container bind.
 - The interceptor Lambda makes no data-plane calls, so it runs without a VPC by design (documented
   rationale, not an oversight). A fork with private-network requirements can enable VPC mode.
 
@@ -112,6 +112,8 @@ do not remove a row until the item is actually hardened.
 | SD-9 | Interceptor Lambda not code-signed (CKV_AWS_272) | Accepted | Built from in-repo single-file source pinned by `source_code_hash`; a Signer profile is disproportionate for a starter kit | Add an AWS Signer profile if your policy requires signed Lambda code |
 | SD-10 | S3 buckets without cross-region replication (CKV_AWS_144) | Accepted | Disproportionate for a small single-region KB / access-log bucket; both are versioned | Enable CRR for a multi-region DR requirement |
 | SD-11 | KB read grant flagged "data exfiltration" (kics) | False positive | `s3:GetObject` is resource-scoped to one bucket + the `kb/` prefix (not `"*"`); it is least-privilege and cannot retrieve arbitrary data | None — reviewed; scoped ignore documented inline in `iam.tf` |
+| SD-12 | ECR KMS key-admin policy uses service-scoped wildcards (`kms:Delete*`, `kms:Disable*`, `kms:Create*`, …) scoped to the account root | Accepted (dev) | A self-contained kit lets the account root administer its own key; the full `kms:*` wildcard is already avoided | For production, replace the service-scoped wildcards with the exact KMS actions your key administrators need and restrict the statement to a narrow key-admin principal (documented inline in `ecr.tf`) |
+| SD-13 | `plugin/.mcp.json` tool entries use `@latest` (unpinned uvx/npx packages) | Accepted (template) | Kept as a template placeholder so a fork picks current tooling; the file is a front-door config a fork edits before use | Pin each entry (`mcp-atlassian`, `@modelcontextprotocol/server-github`, `awslabs.aws-api-mcp-server`) to a tested version before use, and update deliberately (documented inline via `_supply_chain_note`) |
 
 > **Scanner dispositions.** The Terraform stack carries reviewed inline suppressions
 > (`# checkov:skip=...`, `# kics-scan ignore-line`) plus a repo-level `agentcore/terraform/.checkov.yaml`,

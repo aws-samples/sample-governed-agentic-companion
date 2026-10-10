@@ -57,6 +57,22 @@ class BaseAgent:
             self._knowledge = apply_overlay(self._knowledge)
         except Exception:
             pass
+        # Optional org/team/project memory-layer precedence over the Tier-B overlay. No-op when
+        # no layer entries are supplied (default), so existing behavior is byte-for-byte
+        # unchanged. Layer entries come from human-promoted feedback (feedback.py) applied to the
+        # Tier-B overlay; a layer never escalates trust (Tier-A stays locked). Fails open.
+        try:
+            from .memory_layers import resolve_layers
+            self._knowledge = resolve_layers(self._knowledge, self._layer_entries())
+        except Exception:
+            pass
+
+    def _layer_entries(self):
+        """Hook for forks/overlays to supply promoted org/team/project layer records. The base
+        kit returns none (so layering is a no-op by default); the Tier-B overlay or a fork
+        populates this from the human-promoted feedback it applied. Kept as a method so a
+        subclass/overlay can override without touching load_knowledge."""
+        return getattr(self, "_memory_layer_entries", None)
 
     def _knowledge_text(self) -> List[Tuple[str, str]]:
         """(key, flattened-text) for each loaded knowledge file. The key/filename is included in

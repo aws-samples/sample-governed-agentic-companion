@@ -16,6 +16,12 @@ README.txt
 outputs/
 # DERIVED evidence corpus — regenerated from knowledge/ via `./run.sh bible`; never commit
 .evidence/
+# action-level audit trail (local observability record; may reference internal detail)
+.audit/
+# staged feedback / evolution candidates awaiting human review+promotion (local)
+.feedback/
+# persisted staged-mode plans (local context memory)
+.plans/
 .DS_Store
 
 # Kiro per-developer local settings (machine paths + secrets); ship the .example instead

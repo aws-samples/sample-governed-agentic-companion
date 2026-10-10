@@ -17,6 +17,11 @@ useDefault = true
 description = "Detection patterns and placeholders that are not real secrets."
 
 # Files that intentionally contain secret-SHAPE regexes (detectors, not secrets).
+# NOTE: GitLab Secret-Detection runs the DEFAULT gitleaks ruleset and does NOT consume this
+# repo-local `.gitleaks.toml` path allowlist, so the "Password in URL" false positive on the
+# connection-string detector in agents/data_protection.py is suppressed there by an inline
+# `# gitleaks:allow` annotation on that line. This paths list still suppresses the same shapes
+# for local `gitleaks detect --config .gitleaks.toml` runs and the pre-commit hook.
 paths = [
   '''agents/data_protection\.py''',
   '''tests/test_data_protection\.py''',

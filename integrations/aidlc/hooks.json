@@ -1,0 +1,16 @@
+{
+  "_comment": "Governed Agentic Companion -> agentic-SDLC governance hook. Drop this Stop-style command hook into a harness that supports a command-hook convention (AI-DLC, Claude Code, and similar). It runs the GAC governance gate over each completed response/artifact: exit 2 (BLOCK) on an absolute Tenet 1/3/6 violation, exit 0 (allow) otherwise. Set GAC_ENGINE_REPO to your governed-agentic-companion checkout. Fails open if GAC is not installed.",
+  "hooks": {
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"${GAC_ENGINE_REPO}/integrations/aidlc/companion-gate-hook.sh\"",
+            "timeout": 60
+          }
+        ]
+      }
+    ]
+  }
+}

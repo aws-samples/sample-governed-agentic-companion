@@ -40,7 +40,8 @@ else
   echo "==> venv already present — reusing."
 fi
 echo "==> Installing/updating requirements..."
-./.venv/bin/python -m pip install --quiet --upgrade pip
+# Use the pip bundled with the venv's Python (a known-good version) rather than an
+# unpinned self-upgrade to the latest release — keeps the install reproducible.
 # pytest is pinned in requirements.txt (dev/test dep) — no separate unpinned install.
 ./.venv/bin/python -m pip install --quiet -r requirements.txt
 

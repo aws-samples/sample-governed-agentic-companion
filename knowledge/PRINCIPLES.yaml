@@ -67,3 +67,39 @@ resource_and_containment:
       control: "Single action-layer gating seam across all front doors (deny mutating tool calls at invocation)"
       status: "PARTIAL — permission boundary pattern documented; single seam NOT_STARTED"
       priority: HIGH
+    - id: ENF-004
+      backs: [HI-002]
+      control: "Action-level audit trail: per gated response, record front door, agent, trust zone, measured confidence, grounding sources, gate decision, and findings."
+      status: "IMPLEMENTED (v2.0.0) — agents/audit.py writes an append-only trail (.audit/trail.jsonl)
+        wired into the single gate seam (governance_gate.enforce), so every front door (engine, plugin,
+        aidlc-hook, mcp-gate, staged) is attributable. Metadata only (no raw text; secrets redacted).
+        This is OBSERVABILITY around the say-vs-do gap (HI-002), NOT a second enforcement path — the
+        gate remains the only thing that blocks. Token/cost-spend fields are FOLLOW-UP, gated on the
+        Tier-2/3 LLM path (ENF-002)."
+      priority: MEDIUM
+
+  # ---------------------------------------------------------------------------
+  # EVOLUTION LOOP (v2.0.0) — how the companion learns from its own work, safely.
+  # Not an enforcement control; a governance-aligned learning mechanism (Tenet 8).
+  # ---------------------------------------------------------------------------
+  evolution_loop:
+    rule: "Every work item emits a feedback signal (agents/feedback.py). A grounding gap stages a
+      CANDIDATE learning; a human reviews and PROMOTES it to a Tier-B overlay entry (team|project
+      memory layer) — never silently absorbed, never self-written. Tier-A stays locked. This is the
+      staged -> reviewed -> promoted compounding loop (Tenet 8), surfaced via `./run.sh feedback`."
+    guardrails:
+      - "A candidate is staged only on a real gap (not blocked, not grounded); a block is a governance decision, not a learning."
+      - "Promotion targets Tier-B only (mirrors the overlay allowlist); Tier-A knowledge can never be moved by the loop."
+      - "Layer precedence project > team > org; a layer never escalates trust (memory_layers.py)."
+
+  # ---------------------------------------------------------------------------
+  # STRATEGIC DIRECTION (v2.0.0) — GAC as a governance substrate for an agentic SDLC.
+  # Positioning note, not a tenet. No partnership/endorsement is claimed.
+  # ---------------------------------------------------------------------------
+  substrate_direction:
+    note: "GAC's always-on gate is exposed as a Stop-style hook (integrations/aidlc/) and a local
+      MCP tool (frontdoor/gate_mcp_server.py) so an agentic SDLC (e.g. AI-DLC) or any harness can
+      run an AI-produced artifact through the unbypassable floor before accepting it. This is a
+      TECHNICAL INTEGRATION a user wires up — not an official partnership or endorsement, and GAC
+      does not replace an agentic SDLC. The gate has no off switch on any front door; these surfaces
+      fail open when GAC is absent and fail closed on an absolute violation."
