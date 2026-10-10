@@ -13,7 +13,7 @@ a human deploys (Tenet 1); systems of record stay read-only (Tenet 3).
 
 - A deployed AgentCore runtime (see `../agentcore/README.md`) and its ARN.
 - A Cognito user-pool app client for the runtime's CUSTOM_JWT authorizer.
-- Bridge deps in the clone's venv, pinned to specific tested versions (never open ranges or bare names): `pip install 'mcp==1.28.0' 'boto3==1.35.0' 'requests==2.33.0'`. Bump each pin deliberately after checking advisories; the project's `requirements.txt` lists these same optional front-door pins to copy from.
+- Bridge deps in the clone's venv: `pip install 'mcp>=1.28.0,<2' boto3 requests`.
 - A gitignored env file with your identity + runtime config (never commit it):
   ```bash
   # ~/.companion-frontdoor.env  (chmod 600)

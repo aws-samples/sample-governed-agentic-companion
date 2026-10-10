@@ -124,7 +124,7 @@ _SECRET_DETECTORS = [
     # Bounded user/password segments (1..256) — the upper bounds are ReDoS guards, same
     # rationale as _VALUE: an unbounded `{3,}` before '@' backtracks catastrophically on a long
     # colon/at-free run. A real userinfo segment is far under 256 chars.
-    (re.compile(r"(?i)://[^/\s:@]{1,256}:[^/\s:@]{3,256}@"), "connection-string password",  # gitleaks:allow
+    (re.compile(r"(?i)://[^/\s:@]{1,256}:[^/\s:@]{3,256}@"), "connection-string password",
      "[REDACTED-CONN-SECRET]"),
     # Inline credential: ONLY keys that denote a secret (password/passphrase/secret/token/
     # api key/private key/bearer), assigned a real value. Deliberately NOT 'key='/'id='/

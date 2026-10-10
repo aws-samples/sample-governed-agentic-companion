@@ -35,8 +35,8 @@ hashicorp/aws ≥ v6.66) — not the AgentCore CLI:
 - A **`protocol_type = "MCP"`** gateway with an **`mcp_server` target** whose endpoint is the
   mcp-runtime's `/mcp` invocations URL. (MCP is the only valid gateway protocol; the target brokers
   to the mcp-runtime as an upstream MCP server.)
-- The mcp-runtime is **stateless** on **port 8000** at `/mcp` (the AgentCore Runtime service
-  health-checks port 8000). Running stateful or on another port fails the health check.
+- The mcp-runtime is **stateless** on **port 8000** at `/mcp` (the platform health-checks 8000).
+  Running stateful or on another port fails the health check.
 - Inbound is **CUSTOM_JWT** (the builder's IdP token, PKCE for the IDE path). Outbound to the
   runtime is **OAuth M2M** (a Cognito `client_credentials` grant + the `gac-engine/invoke` scope),
   wired via an AgentCore Identity OAuth2 credential provider.
