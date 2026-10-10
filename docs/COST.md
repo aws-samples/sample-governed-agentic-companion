@@ -45,7 +45,7 @@ no LLM in the path** by default, a factual-recall answer (`companion_kb`, status
 costs **$0 in tokens** — it never calls the model. An LLM answer (`ask_companion` on a model tier)
 with a grounded context of ~8k input + ~1k output tokens costs roughly **$0.024 + $0.015 ≈ $0.039**.
 So **cost per builder is governed by how many LLM calls they make and how big the context is**, not
-by the platform footprint.
+by the AgentCore service-layer footprint (Gateway, Memory, compute, and storage).
 
 **Fixed monthly floor (present whether or not anyone uses it):**
 

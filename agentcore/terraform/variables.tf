@@ -205,8 +205,12 @@ variable "proprietary_terms" {
 #                             Entra client_credentials app (see gateway.tf / README).
 #
 #   auth_mode = "none"     -> INTERNAL TEST ONLY. No inbound authorizer, no IdP. The runtime is
-#                             reachable without a token. NEVER use outside an isolated dev
-#                             account — a guard below blocks pairing this with a gateway.
+#                             reachable without a token. Because the runtimes use
+#                             network_mode="PUBLIC", "none" means a PUBLICLY NETWORK-ACCESSIBLE
+#                             endpoint with NO authentication — NEVER use it with a public
+#                             network mode outside a fully isolated dev account. Guards below
+#                             block pairing "none" with a gateway and require the explicit
+#                             allow_unauthenticated=true acknowledgement.
 #
 # In every mode the GovernanceGate is unchanged and absolute (Tenets 1/3/6) — auth_mode only
 # controls who may reach the front door, never what the engine is allowed to do.
