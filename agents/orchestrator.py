@@ -109,13 +109,18 @@ class Orchestrator:
         # Default to the first specialist if nothing matched (still gated).
         return best_name or next(iter(self._specialists))
 
-    def handle(self, request: str, environment: str = "dev") -> str:
+    def handle(self, request: str, environment: str = "dev", *,
+               stage: Optional[str] = None, front_door: str = "engine") -> str:
         """Route, delegate, and return the GATED response. This is the one entry point.
 
         When an evidence provider is configured, a packet is built for the route BEFORE
         dispatch; a packet that does not authorize this specialist (or is not READY) blocks the
         response instead of calling handle_request. No-op when the provider is None (the
-        default): behavior is unchanged."""
+        default): behavior is unchanged.
+
+        `stage` and `front_door` are audit-only labels (default None/"engine"), passed straight
+        to the gate so a staged-mode step or a non-engine caller is attributable in the audit
+        trail. They never affect routing or enforcement."""
         name = self.route(request)
         agent, _kw = self._specialists[name]
         logger.info("[Orchestrator] routing to %s", name)
@@ -134,11 +139,13 @@ class Orchestrator:
                 # Still pass through the gate for a consistent, audited outcome.
                 return gate_output(block, agent=name, request=request,
                                    environment=environment, agent_obj=agent,
-                                   used_llm=False, confidence=1.0, footer=False)
+                                   used_llm=False, confidence=1.0, footer=False,
+                                   stage=stage, front_door=front_door)
 
         raw = agent.handle_request(request, environment)
         if evidence_packet is not None:
             raw += "\n" + evidence_packet.render_basis()
         # EVERY response leaves through the gate — confidence/sources measured from the agent.
         return gate_output(raw, agent=name, request=request, environment=environment,
-                           agent_obj=agent, evidence=evidence_packet)
+                           agent_obj=agent, evidence=evidence_packet,
+                           stage=stage, front_door=front_door)

@@ -182,10 +182,16 @@ class GovernanceGate:
         sources: Optional[List[str]] = None,
         footer: bool = True,
         evidence: Optional[EvidencePacket] = None,
+        stage: Optional[str] = None,
+        front_door: str = "engine",
     ) -> GateResult:
         """`evidence` is an optional EvidencePacket from the evidence gateway (see
         evidence_gateway.py). It defaults to None, a no-op: with no evidence provider
-        configured, enforcement is byte-for-byte unchanged from before this parameter."""
+        configured, enforcement is byte-for-byte unchanged from before this parameter.
+
+        `stage` and `front_door` are audit-only labels (default None/"engine"): they tag the
+        action-trail event so a staged-mode step or a non-engine front door (plugin, MCP, hook)
+        is attributable. They never affect enforcement."""
         trust_zone = "exploration" if used_llm else "verified"
         sources = sources or []
 
@@ -217,6 +223,31 @@ class GovernanceGate:
         )
         logger.info("[GovernanceGate] %s",
                     json.dumps({"env": environment, **result.audit_dict()}, default=str))
+        # Action-level audit trail (OB-001 / HI-003 — ENF-006). Observability only; fail-open;
+        # never blocks (the gate above is the only thing that can). Records metadata, not text.
+        try:
+            from .audit import get_audit
+            get_audit().record_gate(
+                agent=agent, request=request, response=response, trust_zone=trust_zone,
+                confidence=confidence, sources=sources, blocked=blocked,
+                findings=[{"tenet": f.tenet, "code": f.code, "severity": f.severity.value}
+                          for f in findings],
+                environment=environment, stage=stage, front_door=front_door,
+            )
+        except Exception:
+            pass
+        # Feedback / evolution loop (Tenet 8). Every work item emits a signal; a candidate
+        # learning is staged ONLY when there is a real grounding gap (not blocked, not grounded).
+        # Staged for human review+promotion — never silently absorbed. Fail-open; never blocks.
+        try:
+            from .feedback import get_feedback
+            get_feedback().record_work(
+                agent=agent, request=request, trust_zone=trust_zone,
+                confidence=confidence, sources=sources, blocked=blocked,
+                fact_bar=CONFIDENCE_FACT_THRESHOLD,
+            )
+        except Exception:
+            pass
         return result
 
     # -- block action ------------------------------------------------------------
@@ -421,7 +452,8 @@ def gate_output(response: str, *, agent: str, request: str = "", environment: st
                 agent_obj: object = None, used_llm: Optional[bool] = None,
                 confidence: Optional[float] = None,
                 sources: Optional[List[str]] = None, footer: bool = True,
-                evidence: Optional[EvidencePacket] = None) -> str:
+                evidence: Optional[EvidencePacket] = None,
+                stage: Optional[str] = None, front_door: str = "engine") -> str:
     """The ONE function every response path calls, so 'everything is gated' is literally true.
 
     `evidence` is an optional EvidencePacket from the evidence gateway; it defaults to None
@@ -443,5 +475,5 @@ def gate_output(response: str, *, agent: str, request: str = "", environment: st
     return get_gate().enforce(
         response, agent=agent, request=request, environment=environment,
         confidence=confidence, used_llm=used_llm, sources=sources, footer=footer,
-        evidence=evidence,
+        evidence=evidence, stage=stage, front_door=front_door,
     ).response
