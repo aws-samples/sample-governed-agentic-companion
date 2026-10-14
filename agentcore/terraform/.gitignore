@@ -13,6 +13,7 @@ crash.*.log
 
 # Real variable files (the .example is tracked; the real one is not)
 terraform.tfvars
+backend.tf
 *.auto.tfvars
 override.tf
 override.tf.json

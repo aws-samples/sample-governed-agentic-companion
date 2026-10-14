@@ -51,11 +51,31 @@ create_bedrock_guardrail = false
 
 # ---- Auth mode: choose ONE -------------------------------------------------------------
 
-# (A) Cognito — Terraform creates the IdP (reference deployment)
+# (A) Cognito — Terraform manages the IdP (reference deployment)
 auth_mode = "cognito"
-# Cognito hardening (defaults shown; matches the AWS AgentCore reference samples):
+# Cognito hardening (defaults shown; matches the AWS AgentCore reference samples). These
+# pool-level settings apply only when OWNING a pool (manage_identity_pool=true); on the consume
+# path the shared pool is owned by the platform stack and these are ignored:
 cognito_advanced_security_mode = "ENFORCED"  # ENFORCED | AUDIT | OFF
 cognito_mfa_mode               = "OPTIONAL"  # OPTIONAL (default; TOTP available) | ON (prod) | OFF (throwaway dev only)
+
+# Shared identity (commons pattern) — choose OWN or CONSUME:
+#
+#   OWN (default, single-flavor / standalone): this stack CREATES and owns the Cognito pool,
+#   domain, resource-server scope, and clients. Leave manage_identity_pool at its default true.
+# manage_identity_pool = true   # default
+#
+#   CONSUME (multi-flavor productionized model): a separate PLATFORM stack owns the ONE shared
+#   Cognito pool all flavors reference. This stack creates its OWN gac-engine/invoke scope +
+#   clients IN that shared pool (flavor isolation) but does NOT create the pool/domain. Only the
+#   pool + users are shared. Supply the platform stack's outputs:
+# manage_identity_pool  = false
+# existing_user_pool_id = "<platform output: shared_user_pool_id>"
+# existing_oidc_issuer  = "https://cognito-idp.<region>.amazonaws.com/<shared pool id>"
+#   existing_frontdoor_client_ids / existing_m2m_client_id / existing_oauth_frontdoor_client_id
+#   are for the RARE pre-created-client case; normally leave empty (this fork makes its own).
+#   The platform stack that owns the shared pool is a separate stack you provide; see AGENTS.md
+#   ("Shared-identity consume path").
 
 # (B) Microsoft Entra ID — use an existing tenant (Terraform creates no IdP)
 # auth_mode                    = "entraid"

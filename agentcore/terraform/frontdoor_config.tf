@@ -16,7 +16,7 @@ locals {
 
   orchestrator_arn = aws_bedrockagentcore_agent_runtime.orchestrator.agent_runtime_arn
 
-  cognito_user_pool_id = local.auth_is_cognito ? one(aws_cognito_user_pool.this[*].id) : ""
+  cognito_user_pool_id = local.auth_is_cognito ? local.effective_pool_id : ""
   cognito_client_id    = local.auth_is_cognito ? one(aws_cognito_user_pool_client.frontdoor[*].id) : ""
 
   # Kiro/Claude gateway-mode MCP config (only meaningful when a gateway is deployed).

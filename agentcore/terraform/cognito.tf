@@ -16,14 +16,26 @@
 # For auth_mode = "entraid" or "none", none of these are created (count = 0).
 
 locals {
-  cognito_count       = local.auth_is_cognito ? 1 : 0
+  # Two DISTINCT gates (productionized multi-flavor model — one shared pool, many forks):
+  #   pool_count   — create the POOL + DOMAIN only when this deployment OWNS identity
+  #                  (manage_identity_pool=true). When consuming a shared pool, not created.
+  #   client_count — create this flavor's OWN resource-server scope + clients WHENEVER cognito
+  #                  is in use, OWNED OR CONSUMED (per-flavor isolation: GAC's gac-engine/invoke
+  #                  scope + its own clients live IN the shared pool).
+  # Default manage_identity_pool=true => both ==1 => today's behavior exactly.
+  pool_count   = (local.auth_is_cognito && var.manage_identity_pool) ? 1 : 0
+  client_count = local.auth_is_cognito ? 1 : 0
+
+  # The pool clients/resource-server attach to: created pool when owning, shared pool when consuming.
+  effective_pool_id = var.manage_identity_pool ? one(aws_cognito_user_pool.this[*].id) : var.existing_user_pool_id
+
   cognito_domain      = "${var.name_prefix}-${local.account_id}"
   m2m_resource_server = "gac-engine"
   m2m_scope_name      = "invoke"
 }
 
 resource "aws_cognito_user_pool" "this" {
-  count = local.cognito_count
+  count = local.pool_count
   name  = "${var.name_prefix}-pool"
 
   admin_create_user_config {
@@ -69,16 +81,17 @@ resource "aws_cognito_user_pool" "this" {
 }
 
 resource "aws_cognito_user_pool_domain" "this" {
-  count        = local.cognito_count
+  count        = local.pool_count
   domain       = local.cognito_domain
   user_pool_id = aws_cognito_user_pool.this[0].id
 }
 
-# Front-door USER client (public front door presents tokens from this client).
+# Front-door USER client (public front door presents tokens from this client). Created in the
+# OWNED or the SHARED pool (effective_pool_id) — a per-flavor client either way.
 resource "aws_cognito_user_pool_client" "frontdoor" {
-  count        = local.cognito_count
+  count        = local.client_count
   name         = "${var.name_prefix}-frontdoor"
-  user_pool_id = aws_cognito_user_pool.this[0].id
+  user_pool_id = local.effective_pool_id
 
   generate_secret = true
 
@@ -110,9 +123,9 @@ resource "aws_cognito_user_pool_client" "frontdoor" {
 # enable_oauth_frontdoor_client=true. The token carries the engine resource-server scope so
 # the gateway/runtime CUSTOM_JWT authorizer accepts it.
 resource "aws_cognito_user_pool_client" "oauth_frontdoor" {
-  count        = local.cognito_count > 0 && var.enable_oauth_frontdoor_client ? 1 : 0
+  count        = local.client_count > 0 && var.enable_oauth_frontdoor_client ? 1 : 0
   name         = "${var.name_prefix}-oauth-frontdoor"
-  user_pool_id = aws_cognito_user_pool.this[0].id
+  user_pool_id = local.effective_pool_id
 
   generate_secret = false # public client — PKCE, no secret (Kiro IDE supports public/PKCE only)
 
@@ -144,10 +157,10 @@ resource "aws_cognito_user_pool_client" "oauth_frontdoor" {
 
 # Resource server + scope for the M2M (gateway->runtime) client_credentials grant.
 resource "aws_cognito_resource_server" "engine" {
-  count        = local.cognito_count
+  count        = local.client_count
   identifier   = local.m2m_resource_server
   name         = "Governed Companion Engine"
-  user_pool_id = aws_cognito_user_pool.this[0].id
+  user_pool_id = local.effective_pool_id
 
   scope {
     scope_name        = local.m2m_scope_name
@@ -157,9 +170,9 @@ resource "aws_cognito_resource_server" "engine" {
 
 # M2M client_credentials app client (the gateway's OUTBOUND credential).
 resource "aws_cognito_user_pool_client" "m2m" {
-  count        = local.cognito_count
+  count        = local.client_count
   name         = "${var.name_prefix}-m2m"
-  user_pool_id = aws_cognito_user_pool.this[0].id
+  user_pool_id = local.effective_pool_id
 
   generate_secret                      = true
   allowed_oauth_flows                  = ["client_credentials"]

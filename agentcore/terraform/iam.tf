@@ -38,6 +38,12 @@ resource "aws_iam_role" "runtime_exec" {
 }
 
 # AWS-managed baseline for AgentCore runtimes.
+# NOTE (least privilege): BedrockAgentCoreFullAccess is a BROAD starting point — it grants
+# `bedrock-agentcore:*` (a service-scoped wildcard) plus broad IAM read actions. It is used here
+# only to keep the starter kit easy to stand up. For production, REPLACE this managed-policy
+# attachment with a custom policy scoped to the specific `bedrock-agentcore:` data-plane actions
+# the runtime actually invokes — mirror the least-privilege, resource-scoped pattern used by the
+# inline policy below (ECR/S3/Bedrock statements) rather than inheriting the wildcard.
 resource "aws_iam_role_policy_attachment" "runtime_exec_managed" {
   role       = aws_iam_role.runtime_exec.name
   policy_arn = "arn:aws:iam::aws:policy/BedrockAgentCoreFullAccess"
