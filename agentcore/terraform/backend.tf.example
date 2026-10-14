@@ -1,0 +1,25 @@
+# Remote Terraform state backend (R2) — OPT-IN.
+#
+# Copy this file to `backend.tf` (gitignored) and fill in the state bucket that the platform
+# stack created, then run (a HUMAN, once per stack):
+#
+#   terraform init -reconfigure      # fresh backend, empty state
+#   # or, to move existing LOCAL state into the bucket:
+#   terraform init -migrate-state
+#
+# The state bucket is created by the shared platform stack (modules/backend-bootstrap, wired in
+# the companion platform/ stack). Use native S3 locking (use_lockfile) — no DynamoDB table
+# needed on a recent Terraform. Until you add backend.tf the stack uses local state.
+#
+# Governance: a human runs init/migrate. Use a DISTINCT per-fork key so several forks of this
+# starter kit can share one bucket without colliding (companions/<your-fork>/..., platform/...).
+
+terraform {
+  backend "s3" {
+    bucket       = "companion-tfstate-<ACCOUNT_ID>-<REGION>"      # from the platform stack's state_bucket output
+    key          = "companions/<your-fork>/terraform.tfstate"     # per-fork key (e.g. your name_prefix)
+    region       = "<REGION>"
+    use_lockfile = true # S3-native state locking
+    encrypt      = true
+  }
+}

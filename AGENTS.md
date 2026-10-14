@@ -66,6 +66,20 @@ by construction. A specialist that cannot ground an answer declines honestly rat
 - **Onboarding** — `onboarding/install-companion-frontdoor.sh` (+ `.ps1`) wires Kiro + Claude
   Code routing pointers without touching a team's own files.
 
+## Shared-identity consume path (multi-flavor deployments)
+
+`agentcore/terraform/` can either OWN its Cognito pool (default, `manage_identity_pool = true` —
+unchanged standalone behavior) or CONSUME a shared pool that a separate platform stack owns
+(`manage_identity_pool = false` + `existing_user_pool_id` / `existing_oidc_issuer`). On the
+consume path GAC does NOT create the pool/domain, but it STILL creates its OWN
+`gac-engine/invoke` resource-server scope + front-door/OAuth/M2M clients IN the shared pool
+(flavor isolation). The gating split is in `cognito.tf` (`pool_count` owned-only, `client_count`
+always-when-cognito, `effective_pool_id` = created-or-shared). `backend.tf` (remote S3 state) is
+environment-specific and gitignored; only `backend.tf.example` is tracked. This lets one shared
+pool + one remote-state backend serve several forks of this starter kit in one account, each a
+distinct `name_prefix` with its own `<prefix>-engine/invoke` scope and clients. Flipping a LIVE
+owning deployment to consume is a human-run state import, never a recreate.
+
 ## v2.0.0 capabilities (the uplift)
 
 GAC v2 keeps the governance core unchanged (same 13 tenets; the gate still has no off switch) and

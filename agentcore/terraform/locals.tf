@@ -23,9 +23,12 @@ locals {
   inbound_jwt_enabled = local.auth_is_cognito || local.auth_is_entraid
 
   # JWT issuer the inbound authorizer validates.
-  # cognito: derived from the created pool; entraid: derived from the supplied discovery URL.
+  # cognito: owned => derived from the created pool; consume => the supplied shared-pool issuer.
+  # entraid: derived from the supplied discovery URL.
   jwt_issuer = local.auth_is_cognito ? (
-    "https://cognito-idp.${local.region}.amazonaws.com/${one(aws_cognito_user_pool.this[*].id)}"
+    var.manage_identity_pool ?
+    "https://cognito-idp.${local.region}.amazonaws.com/${one(aws_cognito_user_pool.this[*].id)}" :
+    var.existing_oidc_issuer
     ) : (
     local.auth_is_entraid ? replace(var.entraid_discovery_url, "/.well-known/openid-configuration", "") : ""
   )

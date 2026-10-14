@@ -232,6 +232,51 @@ variable "allow_unauthenticated" {
   default     = false
 }
 
+# ---- Shared identity toggle (commons pattern) -------------------------------------------
+#
+# The Cognito POOL + users are a SHARED PLATFORM component (one logical instance all flavors
+# reference). When true (default) this deployment OWNS the pool (today's behavior). When false
+# it CONSUMES the shared pool another stack created, supplying the pool coordinates below; this
+# fork still creates its OWN resource-server scope + clients IN the shared pool (isolation).
+# Only ONE deployment per account should own the pool. See AGENTS.md ("Shared-identity consume
+# path") for the model and the OWN-vs-CONSUME walkthrough.
+
+variable "manage_identity_pool" {
+  description = "When true (default), CREATE and own the Cognito pool/domain. When false, CONSUME the shared pool via existing_user_pool_id/existing_oidc_issuer (this flavor still creates its own clients in that pool)."
+  type        = bool
+  default     = true
+}
+
+variable "existing_user_pool_id" {
+  description = "Consume-path only (manage_identity_pool=false): the id of the shared Cognito user pool the platform stack created."
+  type        = string
+  default     = ""
+}
+
+variable "existing_oidc_issuer" {
+  description = "Consume-path only: the shared pool's OIDC issuer URL (https://cognito-idp.<region>.amazonaws.com/<poolId>)."
+  type        = string
+  default     = ""
+}
+
+variable "existing_frontdoor_client_ids" {
+  description = "Consume-path only (rare): extra pre-created shared-pool front-door client id(s) the inbound authorizer should ALSO accept, beyond the ones this flavor creates."
+  type        = list(string)
+  default     = []
+}
+
+variable "existing_m2m_client_id" {
+  description = "Consume-path only (rare): an extra pre-created shared-pool M2M client id to add to the runtime inbound allow-list."
+  type        = string
+  default     = ""
+}
+
+variable "existing_oauth_frontdoor_client_id" {
+  description = "Consume-path only (rare): an extra pre-created shared-pool PKCE OAuth client id to accept."
+  type        = string
+  default     = ""
+}
+
 # ---- Cognito (auth_mode = "cognito") ----------------------------------------------------
 
 variable "cognito_frontdoor_callback_urls" {

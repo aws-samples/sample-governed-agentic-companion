@@ -81,8 +81,8 @@ output "inbound_jwt_discovery_url" {
 }
 
 output "cognito_user_pool_id" {
-  description = "Cognito user pool id (empty unless auth_mode=cognito)."
-  value       = local.auth_is_cognito ? one(aws_cognito_user_pool.this[*].id) : ""
+  description = "Cognito user pool id (empty unless auth_mode=cognito). On the consume path this is the shared pool id."
+  value       = local.auth_is_cognito ? local.effective_pool_id : ""
 }
 
 output "cognito_frontdoor_client_id" {
