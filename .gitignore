@@ -26,3 +26,35 @@ outputs/
 
 # Kiro per-developer local settings (machine paths + secrets); ship the .example instead
 .kiro/settings/
+# Terraform local state, plans, backends and tfvars (the .example files stay tracked)
+*.tfstate
+*.tfstate.*
+*.tfplan
+tf.plan
+.terraform/
+terraform.tfvars
+backend.tf
+# tool caches (CI pip cache lives under the project dir)
+.pip-cache/
+.mypy_cache/
+.ruff_cache/
+# Provider lock files are local: versions.tf bounds each provider within v6 and pins no checksums (docs/SECURITY.md SD-28)
+**/.terraform.lock.hcl
+crash.log
+crash.*.log
+*.auto.tfvars
+# build zips (archive_file output such as .identity_interceptor.zip)
+.*.zip
+# keep a shipped env example if one is ever added
+!.env.example
+# machine-specific agent settings (shipped plugin/ and steering content stay tracked)
+.claude/settings.local.json
+# editors
+.vscode/
+.idea/
+*.swp
+# AWS Architecture Icons: deployer-staged at image-build time; NEVER committed (THIRD-PARTY-LICENSES.md)
+agentcore/diagram-icons/*
+!agentcore/diagram-icons/README.md
+# local sanitized icon catalog built by ./run.sh diagram-assets
+.diagram-assets/
