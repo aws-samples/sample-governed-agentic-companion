@@ -1,0 +1,6 @@
+# Build-time only: the discarded `diagram-assets` stage of both runtime Dockerfiles, which builds
+# the sanitized icon catalog from the deployer-staged AWS Architecture Icons zip
+# (scripts/build_icon_catalog.py). Nothing here reaches the runtime images.
+# Exact pins; pip-audit covers this file (docs/security/scan-results.md).
+pip==26.2.2
+defusedxml==0.7.1

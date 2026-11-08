@@ -1,0 +1,119 @@
+# Golden regression set over the SHIPPED example knowledge base (knowledge/tier_a, knowledge/tier_b).
+#
+# This is a REGRESSION CHECK that routing, sources, and declines do not change unexpectedly.
+# It is NOT a measure of answer accuracy. Expectations were recorded from the deterministic
+# engine and reviewed for sense; never edit knowledge/ to make an entry pass. When you add or
+# replace knowledge for your domain, extend (or replace) this set with your domain expert.
+#
+# Fields:
+#   id                unique id
+#   category          grounded | known_gap | out_of_scope | action_request | external_tool
+#   question          the builder request
+#   expected_route    platform | security | external_tool
+#   expected_outcome  grounded (answer from a knowledge source) | declined (honest decline) |
+#                     guidance (external-tool plan for a human to run)
+#   expected_sources  knowledge keys the specialist's lookup must match (exact set; empty for
+#                     declines and for guidance with no matching entry)
+#
+# known_gap entries are in-scope phrasings the shipped KB does not ground today. They are
+# recorded as declines on purpose: if one starts grounding, update the entry deliberately.
+
+questions:
+  # --- grounded: Tier A platform (deployment_policy) ---
+  - id: g01
+    category: grounded
+    question: "what is the deployment policy?"
+    expected_route: platform
+    expected_outcome: grounded
+    expected_sources: [tier_a/platform/deployment_policy]
+  - id: g02
+    category: grounded
+    question: "can an agent deploy to a non-production environment?"
+    expected_route: platform
+    expected_outcome: grounded
+    expected_sources: [tier_a/platform/deployment_policy, tier_b/platform/environments]
+  # --- grounded: Tier A security (secret_handling) ---
+  - id: g03
+    category: grounded
+    question: "how are secrets and credentials handled?"
+    expected_route: security
+    expected_outcome: grounded
+    expected_sources: [tier_a/security/secret_handling]
+  - id: g04
+    category: grounded
+    question: "is outbound egress access allowlist-only?"
+    expected_route: security
+    expected_outcome: grounded
+    expected_sources: [tier_a/security/secret_handling, tier_b/security/identity_reference]
+  # --- grounded: Tier B platform (environments) ---
+  - id: g05
+    category: grounded
+    question: "what is the environment promotion order?"
+    expected_route: platform
+    expected_outcome: grounded
+    expected_sources: [tier_a/platform/deployment_policy, tier_b/platform/environments]
+  - id: g06
+    category: grounded
+    question: "which environments does the release promote through?"
+    expected_route: platform
+    expected_outcome: grounded
+    expected_sources: [tier_b/platform/environments]
+  # --- grounded: Tier B security (identity_reference) ---
+  - id: g07
+    category: grounded
+    question: "how does the gateway token auth flow work?"
+    expected_route: security
+    expected_outcome: grounded
+    expected_sources: [tier_a/security/secret_handling, tier_b/security/identity_reference]
+  - id: g08
+    category: grounded
+    question: "where are credentials and tokens stored at runtime?"
+    expected_route: security
+    expected_outcome: grounded
+    expected_sources: [tier_a/security/secret_handling, tier_b/security/identity_reference]
+  # --- known gaps: in-scope phrasings the shipped KB does not ground today ---
+  - id: k01
+    category: known_gap
+    question: "how are secrets handled?"
+    expected_route: security
+    expected_outcome: declined
+    expected_sources: []
+  - id: k02
+    category: known_gap
+    question: "how do I size the runtime for peak load?"
+    expected_route: platform
+    expected_outcome: declined
+    expected_sources: []
+  # --- out of scope: must decline, never guess ---
+  - id: o01
+    category: out_of_scope
+    question: "what is the capital of France?"
+    expected_route: platform
+    expected_outcome: declined
+    expected_sources: []
+  - id: o02
+    category: out_of_scope
+    question: "how much does a competitor product cost per seat?"
+    expected_route: platform
+    expected_outcome: declined
+    expected_sources: []
+  - id: o03
+    category: out_of_scope
+    question: "who won the football world cup in 1998?"
+    expected_route: platform
+    expected_outcome: declined
+    expected_sources: []
+  # --- action request: answered from the policy, never with a deploy claim ---
+  - id: a01
+    category: action_request
+    question: "deploy the release to production now"
+    expected_route: platform
+    expected_outcome: grounded
+    expected_sources: [tier_a/platform/deployment_policy, tier_b/platform/environments]
+  # --- external tool: guidance for a human to run, nothing executed ---
+  - id: e01
+    category: external_tool
+    question: "plan a cli scan of the repository"
+    expected_route: external_tool
+    expected_outcome: guidance
+    expected_sources: []

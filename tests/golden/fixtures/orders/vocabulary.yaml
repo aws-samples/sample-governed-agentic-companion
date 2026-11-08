@@ -1,0 +1,14 @@
+# Test fixture vocabulary (golden row 16): the fork declares its own flow order.
+summary: "Fixture vocabulary for the orders fork."
+topology_note: "The fixture knowledge describes an invented order system."
+ignore: [our, my, the, a, an, of, to, in, "on", at, it, its, is, please, architecture, diagram,
+         draw, show, picture, system, me, flow]
+scopes:
+  end to end: end-to-end
+  everything: end-to-end
+flow_order: [web, data, async]
+roles:
+  transit_tags: [queue]
+  connector_tags: []
+  security_tags: []
+  entry_tags: [client]

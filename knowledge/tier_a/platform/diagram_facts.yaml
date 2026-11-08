@@ -1,0 +1,139 @@
+# Diagram facts (platform, example). Structured topology the diagram specialist draws; prose KB
+# entries are never drawn. Each fact names the file it was verified against (ref).
+# This describes the kit's own default: network_access = "private" (both runtimes in VPC mode,
+# their network interfaces in your private subnets), gateway opt-in (deploy_gateway = false by
+# default), so the gateway, its endpoint and its hops are optional (dashed).
+# Arrows follow the data: from = sender, to = receiver. Generic, customer-agnostic content only.
+# Optional layout hints (never drawn): col = the column of the node inside its container (the
+# rank it would otherwise get from the arrows), row = its order in that column (lower first).
+# Optional retrieval metadata (never drawn): aliases (what people call a node or group), tags
+# (its kind, or an edge's flow). The natural-language planner matches requests against labels,
+# aliases and tags; ids are never matched.
+summary: "Example diagram facts: the kit's private-default network topology."
+diagram_facts:
+  # -- groups ------------------------------------------------------------------------------
+  - {kind: group, id: corporate-network, type: corporate-dc, label: "Your network",
+     topics: [private-request-path, gateway-to-runtimes],
+     ref: "agentcore/terraform/modules/private-network/security_groups.tf"}
+  - {kind: group, id: aws-cloud, type: aws-cloud, label: "AWS Cloud",
+     topics: [private-request-path, gateway-to-runtimes, kb-ingestion, bedrock-calls],
+     ref: "agentcore/terraform/locals.tf"}
+  - {kind: group, id: region, type: region, label: "AWS Region", parent: aws-cloud,
+     topics: [private-request-path, gateway-to-runtimes, kb-ingestion, bedrock-calls],
+     ref: "agentcore/terraform/locals.tf"}
+  - {kind: group, id: vpc, type: vpc, label: "VPC", parent: region,
+     topics: [private-request-path, gateway-to-runtimes, kb-ingestion, bedrock-calls],
+     ref: "agentcore/terraform/modules/private-network/main.tf"}
+  - {kind: group, id: private-subnets, type: private-subnet, label: "Private subnets", parent: vpc,
+     topics: [private-request-path, gateway-to-runtimes, kb-ingestion, bedrock-calls],
+     ref: "agentcore/terraform/modules/private-network/main.tf"}
+  - {kind: group, id: agentcore-services, type: generic, label: "AgentCore",
+     parent: region,
+     topics: [private-request-path, gateway-to-runtimes, kb-ingestion, bedrock-calls],
+     ref: "agentcore/terraform/runtimes.tf"}
+  # -- nodes -------------------------------------------------------------------------------
+  - {kind: node, id: builder-ide, label: "Builder IDE", icon: Client, group: corporate-network,
+     align: dataplane-endpoint,
+     aliases: [developer, builder, ide, laptop], tags: [client],
+     topics: [private-request-path, gateway-to-runtimes],
+     ref: "agentcore/terraform/modules/private-network/security_groups.tf"}
+  - {kind: node, id: dataplane-endpoint, label: "Data-plane endpoint", icon: AmazonVPCEndpoints,
+     group: private-subnets, row: 1, align: orchestrator-runtime,
+     aliases: [vpc endpoint], tags: [endpoint],
+     topics: [private-request-path],
+     ref: "agentcore/terraform/modules/private-network/endpoints.tf"}
+  - {kind: node, id: gateway-endpoint, label: "Gateway endpoint", icon: AmazonVPCEndpoints,
+     group: private-subnets, optional: true, row: 1, align: builder-ide,
+     aliases: [vpc endpoint], tags: [endpoint],
+     topics: [gateway-to-runtimes],
+     ref: "agentcore/terraform/modules/private-network/endpoints.tf"}
+  - {kind: node, id: runtime-eni, label: "Runtime ENIs", icon: AmazonVPCElasticNetworkInterface,
+     group: private-subnets, col: 1, row: 2,
+     aliases: [eni, network interface], tags: [network],
+     topics: [private-request-path, gateway-to-runtimes, bedrock-calls],
+     ref: "agentcore/terraform/runtimes.tf"}
+  - {kind: node, id: runtime-eni-read, label: "Runtime ENIs", icon: AmazonVPCElasticNetworkInterface,
+     group: private-subnets, aliases: [eni, network interface], tags: [network],
+     topics: [kb-ingestion],
+     ref: "agentcore/terraform/runtimes.tf"}
+  - {kind: node, id: orchestrator-runtime, label: "Orchestrator runtime",
+     icon: AmazonBedrockAgentCore, group: agentcore-services, row: 0,
+     align: runtime-eni-read,
+     aliases: [orchestrator, runtime, engine], tags: [compute],
+     topics: [private-request-path, kb-ingestion, bedrock-calls],
+     ref: "agentcore/terraform/runtimes.tf"}
+  - {kind: node, id: gateway, label: "AgentCore Gateway", icon: AmazonBedrockAgentCore,
+     group: agentcore-services, optional: true, col: 3, row: 0, align: gateway-endpoint,
+     aliases: [gateway, gw], tags: [gateway],
+     topics: [gateway-to-runtimes],
+     ref: "agentcore/terraform/gateway.tf"}
+  - {kind: node, id: mcp-runtime, label: "MCP runtime", icon: AmazonBedrockAgentCore,
+     group: agentcore-services, row: 1,
+     aliases: [mcp, mcp runtime, runtime], tags: [compute],
+     topics: [private-request-path, gateway-to-runtimes, kb-ingestion, bedrock-calls],
+     ref: "agentcore/terraform/runtimes.tf"}
+  - {kind: node, id: s3-endpoint, label: "S3 gateway endpoint", icon: AmazonVPCEndpoints,
+     group: vpc, align: runtime-eni-read,
+     aliases: [vpc endpoint], tags: [endpoint],
+     topics: [kb-ingestion],
+     ref: "agentcore/terraform/modules/private-network/endpoints.tf"}
+  - {kind: node, id: kb-bucket, label: "Tier-B overlay bucket", icon: AmazonSimpleStorageServiceBucket,
+     group: region, row: 0, align: s3-endpoint,
+     aliases: [knowledge base, kb, bucket, overlay], tags: [storage],
+     topics: [kb-ingestion],
+     ref: "agentcore/terraform/s3_kb.tf"}
+  # Opt-in Bedrock calls (the diagram planner and data protection). No layout hints.
+  - {kind: node, id: bedrock-runtime-endpoint, label: "Bedrock endpoint", icon: AmazonVPCEndpoints,
+     group: private-subnets, aliases: [bedrock endpoint, vpc endpoint], tags: [endpoint],
+     topics: [bedrock-calls],
+     ref: "agentcore/terraform/modules/private-network/endpoints.tf"}
+  - {kind: node, id: amazon-bedrock, label: "Amazon Bedrock", icon: AmazonBedrock,
+     group: region, optional: true, aliases: [bedrock, model, llm], tags: [ai],
+     topics: [bedrock-calls], ref: "agents/diagram/planner_bedrock.py"}
+  - {kind: node, id: bedrock-guardrail, label: "Bedrock Guardrails", icon: AmazonBedrock,
+     group: region, optional: true, aliases: [guardrail, guardrails, bedrock], tags: [ai],
+     topics: [bedrock-calls], ref: "agentcore/terraform/guardrail.tf"}
+  # -- edges -------------------------------------------------------------------------------
+  - {kind: edge, id: ide-to-dataplane, from: builder-ide, to: dataplane-endpoint,
+     label: "HTTPS (VPN/DX)", tags: [request], topics: [private-request-path],
+     ref: "agentcore/terraform/modules/private-network/security_groups.tf"}
+  - {kind: edge, id: dataplane-to-orchestrator, from: dataplane-endpoint, to: orchestrator-runtime,
+     label: "invoke", tags: [request], topics: [private-request-path],
+     ref: "agentcore/terraform/resource_policies.tf"}
+  - {kind: edge, id: dataplane-to-mcp-runtime, from: dataplane-endpoint, to: mcp-runtime,
+     label: "invoke", optional: true, tags: [request], topics: [private-request-path],
+     ref: "agentcore/terraform/resource_policies.tf"}
+  - {kind: edge, id: mcp-runtime-to-eni, from: mcp-runtime, to: runtime-eni,
+     label: "egress", tags: [egress],
+     topics: [private-request-path, gateway-to-runtimes, bedrock-calls],
+     ref: "agentcore/terraform/runtimes.tf"}
+  - {kind: edge, id: ide-to-gateway-endpoint, from: builder-ide, to: gateway-endpoint,
+     label: "MCP (VPN/DX)", optional: true, tags: [gateway], topics: [gateway-to-runtimes],
+     ref: "agentcore/terraform/gateway.tf"}
+  - {kind: edge, id: gateway-endpoint-to-gateway, from: gateway-endpoint, to: gateway,
+     optional: true, tags: [gateway], topics: [gateway-to-runtimes],
+     ref: "agentcore/terraform/resource_policies.tf"}
+  - {kind: edge, id: gateway-to-mcp-runtime, from: gateway, to: mcp-runtime, label: "SigV4",
+     optional: true, tags: [gateway], topics: [gateway-to-runtimes],
+     ref: "agentcore/terraform/resource_policies.tf"}
+  - {kind: edge, id: kb-bucket-to-s3-endpoint, from: kb-bucket, to: s3-endpoint,
+     label: "read", tags: [storage], topics: [kb-ingestion],
+     ref: "agentcore/terraform/modules/private-network/endpoints.tf"}
+  - {kind: edge, id: s3-endpoint-to-eni, from: s3-endpoint, to: runtime-eni-read,
+     tags: [storage], topics: [kb-ingestion], ref: "agentcore/terraform/iam.tf"}
+  - {kind: edge, id: eni-to-orchestrator, from: runtime-eni-read, to: orchestrator-runtime,
+     tags: [storage], topics: [kb-ingestion], ref: "agentcore/terraform/runtimes.tf"}
+  - {kind: edge, id: eni-to-mcp-runtime, from: runtime-eni-read, to: mcp-runtime,
+     tags: [storage], topics: [kb-ingestion], ref: "agentcore/terraform/runtimes.tf"}
+  - {kind: edge, id: orchestrator-to-eni, from: orchestrator-runtime, to: runtime-eni,
+     label: "egress", tags: [egress], topics: [bedrock-calls],
+     ref: "agentcore/terraform/runtimes.tf"}
+  - {kind: edge, id: eni-to-bedrock-endpoint, from: runtime-eni, to: bedrock-runtime-endpoint,
+     label: "opt-in calls", optional: true, tags: [ai], topics: [bedrock-calls],
+     ref: "agents/data_protection.py"}
+  - {kind: edge, id: bedrock-endpoint-to-bedrock, from: bedrock-runtime-endpoint,
+     to: amazon-bedrock, label: "Converse", optional: true, tags: [ai],
+     topics: [bedrock-calls], ref: "agents/diagram/planner_bedrock.py"}
+  - {kind: edge, id: bedrock-endpoint-to-guardrail, from: bedrock-runtime-endpoint,
+     to: bedrock-guardrail, label: "ApplyGuardrail", optional: true, tags: [ai],
+     topics: [bedrock-calls], ref: "agents/data_protection.py"}
