@@ -12,7 +12,7 @@ through.
 
 Packet integrity is a tamper-EVIDENCE checksum (canonical-JSON SHA-256), not a
 cryptographic signature: it proves the packet dict was not altered after it was hashed,
-not that the underlying claims are true. See docs/architecture/evidence-gateway.md.
+not that the underlying claims are true. See docs/GOVERNANCE.md and docs/ARCHITECTURE.md.
 
 GOVERNANCE GUARDRAIL (Tenet 4 measurement boundary): an EvidencePacket must NEVER become
 an input to confidence scoring (base_agent.assess_confidence / assess_confidence_detail).

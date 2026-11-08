@@ -35,3 +35,25 @@ def _generate_evidence_corpus():
         # the fixture itself must not mask that by raising here.
         pass
     yield
+
+
+@pytest.fixture(autouse=True)
+def _no_browser_sign_in(monkeypatch):
+    """No test opens a browser or waits for a sign-in by accident: the default flow under test
+    is the password flow (each PKCE test opts in with GAC_AUTH_FLOW=pkce and its own stubs),
+    and webbrowser.open fails the test if anything reaches it."""
+    import webbrowser
+
+    def _refuse(*_a, **_k):
+        raise AssertionError("a test reached webbrowser.open")
+
+    monkeypatch.setenv("GAC_AUTH_FLOW", "password")
+    monkeypatch.setenv("GAC_COGNITO_NO_BROWSER", "1")
+    monkeypatch.setattr(webbrowser, "open", _refuse)
+    yield
+
+
+def pytest_configure(config):
+    config.addinivalue_line(
+        "markers", "container: needs locally built runtime containers on 127.0.0.1 "
+                   "(GAC_E2E_ORCHESTRATOR_URL / GAC_E2E_MCP_URL); skipped otherwise")

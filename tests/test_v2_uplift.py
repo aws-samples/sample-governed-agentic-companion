@@ -74,6 +74,62 @@ class TestFeedbackLoop:
                                    confidence=0.99, sources=["tier_a/platform/x"], blocked=False)
         assert get_feedback().list_candidates() == []
 
+    def test_verified_zone_with_sources_is_grounded_regardless_of_score(self):
+        from agents.feedback import get_feedback
+        get_feedback().record_work(agent="platform", request="q", trust_zone="verified",
+                                   confidence=0.5, sources=["tier_a/platform/x"], blocked=False)
+        assert get_feedback().list_candidates() == []
+
+    def test_exploration_zone_below_bar_with_sources_stages_candidate(self):
+        from agents.feedback import get_feedback
+        get_feedback().record_work(agent="platform", request="q", trust_zone="exploration",
+                                   confidence=0.9, sources=["tier_a/platform/x"], blocked=False)
+        assert len(get_feedback().list_candidates()) == 1
+
+    def test_exploration_zone_at_or_above_bar_with_sources_stages_nothing(self):
+        from agents.feedback import get_feedback
+        get_feedback().record_work(agent="platform", request="q", trust_zone="exploration",
+                                   confidence=0.97, sources=["tier_a/platform/x"], blocked=False)
+        assert get_feedback().list_candidates() == []
+
+    def test_request_with_secret_is_not_staged(self, tmp_path):
+        from agents.feedback import get_feedback
+        key = "AKIA" + "ABCDEFGHIJKLMNOP"
+        res = get_feedback().record_work(agent="platform", request=f"why does {key} fail",
+                                         trust_zone="verified", confidence=0.5, sources=[],
+                                         blocked=False)
+        assert res is None
+        assert get_feedback().list_candidates() == []
+        path = tmp_path / "candidates.jsonl"
+        assert not path.exists() or key not in path.read_text(encoding="utf-8")
+
+    def test_request_with_pii_is_staged_redacted(self, tmp_path):
+        from agents.feedback import get_feedback
+        get_feedback().record_work(agent="platform",
+                                   request="ask alice@example.com about the 8080 rollout",
+                                   trust_zone="verified", confidence=0.5, sources=[],
+                                   blocked=False)
+        cands = get_feedback().list_candidates()
+        assert len(cands) == 1
+        assert "alice@example.com" not in cands[0]["request"]
+        assert "8080 rollout" in cands[0]["request"]
+        assert "alice@example.com" not in (tmp_path / "candidates.jsonl").read_text(
+            encoding="utf-8")
+
+    def test_guard_failure_stages_nothing(self, monkeypatch):
+        import agents.data_protection as dp
+        from agents.feedback import get_feedback
+
+        def _boom(*a, **k):
+            raise RuntimeError("guard down")
+
+        monkeypatch.setattr(dp, "scrub_or_reject", _boom)
+        res = get_feedback().record_work(agent="platform", request="unknown topic",
+                                         trust_zone="verified", confidence=0.5, sources=[],
+                                         blocked=False)
+        assert res is None
+        assert get_feedback().list_candidates() == []
+
     def test_blocked_is_not_a_learning(self):
         from agents.feedback import get_feedback
         get_feedback().record_work(agent="platform", request="q", trust_zone="verified",

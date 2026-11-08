@@ -15,28 +15,44 @@ import os
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
+from .config import load_config
 from .evidence_gateway import (
     EvidenceProvider,
     UnavailableProvider,
     build_evidence_packet,
     packet_validity_reason,
 )
-from .governance_gate import gate_output
+from .governance_gate import gate_output, gate_output_result
 from .specialists import build_specialists
 
 logger = logging.getLogger(__name__)
 
+#: The evidence pre-dispatch block text (unchanged wording; formatted with name and reason).
+EVIDENCE_BLOCK = (
+    "⛔ Response blocked by the evidence gateway ({name}).\n\n"
+    "Evidence packet check failed ({reason}); dependent work must stop "
+    "until it is resolved. This is a review-ready block, not an executed action."
+)
 
-def _load_config() -> dict:
-    try:
-        import yaml
-        for name in ("config.yaml", "config.yaml.example"):
-            cfg = Path(__file__).resolve().parent.parent / name
-            if cfg.exists():
-                return yaml.safe_load(cfg.read_text(encoding="utf-8")) or {}
-    except Exception:
-        pass
-    return {}
+#: The diagram path truncates the evidence basis to this many bytes at a line boundary.
+_EVIDENCE_BASIS_CAP = 1024
+
+
+def _cap_lines(text: str, cap: int) -> str:
+    if len(text.encode("utf-8")) <= cap:
+        return text
+    out, used = [], 0
+    for line in text.split("\n"):
+        n = len(line.encode("utf-8")) + 1
+        if used + n > cap:
+            break
+        out.append(line)
+        used += n
+    return "\n".join(out)
+
+
+# Kept as an alias so existing imports of orchestrator._load_config keep working.
+_load_config = load_config
 
 
 def _get_evidence_provider(config: dict) -> Optional[EvidenceProvider]:
@@ -97,17 +113,115 @@ class Orchestrator:
         # Evidence gateway: optional, config-selected (evidence.provider in config.yaml).
         # None preserves exact existing behavior; see evidence_gateway.py.
         self.evidence_provider = _get_evidence_provider(_load_config())
+        #: compact diagram_manifest of the last passing diagram render (front doors read it)
+        self.last_manifest: Optional[dict] = None
+        #: True when the last diagram request passed the gate without producing a file
+        self.last_declined: bool = False
+
+    def _keyword_score(self, name: str, req: str) -> int:
+        return sum(1 for kw in self._specialists[name][1] if kw in req)
 
     def route(self, request: str) -> str:
-        """Pick the specialist whose keywords best match the request (deterministic)."""
+        """Pick the specialist whose keywords best match the request (deterministic).
+
+        A specialist exposing matches_intent(request, other_score) is asked first, in registry
+        order (the diagram specialist's narrow draw-intent rules); other_score(text) is the best
+        keyword score any OTHER specialist gets for text. Otherwise keyword scoring runs as
+        before."""
+        for name, (agent, _kw) in self._specialists.items():
+            fn = getattr(agent, "matches_intent", None)
+            if callable(fn):
+                def other(text: str, _me: str = name) -> int:
+                    t = text.lower()
+                    return max([self._keyword_score(n, t) for n in self._specialists if n != _me]
+                               or [0])
+                if fn(request, other):
+                    return name
         req = request.lower()
         best_name, best_score = None, 0
-        for name, (_agent, keywords) in self._specialists.items():
-            score = sum(1 for kw in keywords if kw in req)
+        for name in self._specialists:
+            score = self._keyword_score(name, req)
             if score > best_score:
                 best_name, best_score = name, score
         # Default to the first specialist if nothing matched (still gated).
         return best_name or next(iter(self._specialists))
+
+    def handle_with_artifacts(self, request: str, environment: str = "dev", *,
+                              force: Optional[str] = None, deliver: bool = True,
+                              title: str = "", name: str = "",
+                              stage: Optional[str] = None,
+                              front_door: str = "engine",
+                              planner: str = "") -> Tuple[str, Optional[dict]]:
+        """Route (or select `force` when it names a registered specialist), run the evidence
+        pre-dispatch check exactly as handle() does, dispatch, and gate. Returns (gated text,
+        artefact bundle or None). A bundle is returned only when `deliver` is true and the gate
+        passed; forcing a specialist bypasses neither the evidence check nor the gate. For a
+        multi-view diagram the bundle is view 1; handle_with_views returns every view."""
+        text, bundles = self.handle_with_views(request, environment, force=force,
+                                               deliver=deliver, title=title, name=name,
+                                               stage=stage, front_door=front_door,
+                                               planner=planner)
+        return text, (bundles[0] if bundles else None)
+
+    def handle_with_views(self, request: str, environment: str = "dev", *,
+                          force: Optional[str] = None, deliver: bool = True,
+                          title: str = "", name: str = "",
+                          stage: Optional[str] = None,
+                          front_door: str = "engine",
+                          planner: str = "") -> Tuple[str, List[dict]]:
+        """As handle_with_artifacts, but returns (gated text, [bundle per delivered view]).
+        `planner` ("" or "deterministic") can only downgrade the diagram planner. After the
+        call, `last_declined` is True when a diagram request passed the gate without a file
+        (an honest decline)."""
+        rname = force if force in self._specialists else self.route(request)
+        agent, _kw = self._specialists[rname]
+        logger.info("[Orchestrator] routing to %s", rname)
+        self.last_declined = False
+
+        evidence_packet = build_evidence_packet(
+            self.evidence_provider, request, "assessment", [rname]
+        )
+        if evidence_packet is not None:
+            reason = packet_validity_reason(evidence_packet, request, rname)
+            if reason:
+                block = EVIDENCE_BLOCK.format(name=rname, reason=reason)
+                # Still pass through the gate for a consistent, audited outcome.
+                return gate_output(block, agent=rname, request=request,
+                                   environment=environment, agent_obj=agent,
+                                   used_llm=False, confidence=1.0, footer=False,
+                                   stage=stage, front_door=front_door), []
+
+        render = getattr(agent, "render_request", None)
+        if callable(render):
+            rr = render(request, environment, deliver=deliver, title=title, name=name,
+                        wire_budget=front_door != "cli", planner=planner)
+            raw = rr.raw_text
+            if evidence_packet is not None:
+                raw += "\n" + _cap_lines(evidence_packet.render_basis(), _EVIDENCE_BASIS_CAP)
+            # Verified zone with explicit sources: no recomputed heuristic score (agent_obj=None).
+            # An LLM-planned render (opt-in) is exploration zone with its measured traceability.
+            result = gate_output_result(raw, agent=rname, request=request,
+                                        environment=environment, agent_obj=None,
+                                        used_llm=bool(getattr(rr, "used_llm", False)),
+                                        confidence=getattr(rr, "confidence", None),
+                                        sources=rr.sources,
+                                        evidence=evidence_packet, stage=stage,
+                                        front_door=front_door,
+                                        footer_lines=list(getattr(rr, "footer_lines", []) or []),
+                                        audit_extra=dict(getattr(rr, "audit_extra", {}) or {}))
+            self.last_manifest = None if result.blocked else rr.manifest
+            bundles = list(getattr(rr, "bundles", []) or []) or \
+                ([rr.bundle] if rr.bundle is not None else [])
+            self.last_declined = (not result.blocked) and not bundles
+            return result.response, (bundles if (deliver and not result.blocked) else [])
+
+        raw = agent.handle_request(request, environment)
+        if evidence_packet is not None:
+            raw += "\n" + evidence_packet.render_basis()
+        # EVERY response leaves through the gate — confidence/sources measured from the agent.
+        return gate_output(raw, agent=rname, request=request, environment=environment,
+                           agent_obj=agent, evidence=evidence_packet,
+                           stage=stage, front_door=front_door), []
 
     def handle(self, request: str, environment: str = "dev", *,
                stage: Optional[str] = None, front_door: str = "engine") -> str:
@@ -121,31 +235,5 @@ class Orchestrator:
         `stage` and `front_door` are audit-only labels (default None/"engine"), passed straight
         to the gate so a staged-mode step or a non-engine caller is attributable in the audit
         trail. They never affect routing or enforcement."""
-        name = self.route(request)
-        agent, _kw = self._specialists[name]
-        logger.info("[Orchestrator] routing to %s", name)
-
-        evidence_packet = build_evidence_packet(
-            self.evidence_provider, request, "assessment", [name]
-        )
-        if evidence_packet is not None:
-            reason = packet_validity_reason(evidence_packet, request, name)
-            if reason:
-                block = (
-                    f"⛔ Response blocked by the evidence gateway ({name}).\n\n"
-                    f"Evidence packet check failed ({reason}); dependent work must stop "
-                    "until it is resolved. This is a review-ready block, not an executed action."
-                )
-                # Still pass through the gate for a consistent, audited outcome.
-                return gate_output(block, agent=name, request=request,
-                                   environment=environment, agent_obj=agent,
-                                   used_llm=False, confidence=1.0, footer=False,
-                                   stage=stage, front_door=front_door)
-
-        raw = agent.handle_request(request, environment)
-        if evidence_packet is not None:
-            raw += "\n" + evidence_packet.render_basis()
-        # EVERY response leaves through the gate — confidence/sources measured from the agent.
-        return gate_output(raw, agent=name, request=request, environment=environment,
-                           agent_obj=agent, evidence=evidence_packet,
-                           stage=stage, front_door=front_door)
+        return self.handle_with_artifacts(request, environment, deliver=False,
+                                          stage=stage, front_door=front_door)[0]

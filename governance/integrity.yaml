@@ -1,10 +1,25 @@
 principles:
   file: PRINCIPLES.md
-  sha256_hash: 0c5fcdf64d246150441739d2df3b1cb2d5d4463b3eeaf9d3af61c6336969f21c
-  last_verified: '2026-09-28'
+  sha256_hash: a3719d02fcad923231e6cd215409223941be188f5070f76122303542334c71f6
+  last_verified: '2026-10-31'
   change_history:
+  - date: '2026-10-31'
+    author: <governance-admin>
+    justification: Align enforcement, footer and integrity wording with the code (Tenets
+      5, 9, 13); no tenet changed. User-approved cleanup.
+    previous_sha256: 8db4a084338f153873db77dd98a4ed9ec556b48008efa33f2ed7d8846be901dd
+    new_sha256: a3719d02fcad923231e6cd215409223941be188f5070f76122303542334c71f6
+  - date: '2026-10-29'
+    author: <governance-admin>
+    justification: 'Align the constitution with the built kit (agentic-lens alignment:
+      promotion refuses Tier A keys, integrity verified by run.sh status and before
+      every commit, confidence described as coded, untrusted input treated as data,
+      decline behaviour, Tenet 2 autonomy clarified) and add the Tenet 8 source-derived
+      knowledge rule. User-approved handshake 2026-10-28.'
+    previous_sha256: 0c5fcdf64d246150441739d2df3b1cb2d5d4463b3eeaf9d3af61c6336969f21c
+    new_sha256: 8db4a084338f153873db77dd98a4ed9ec556b48008efa33f2ed7d8846be901dd
   - date: '2026-09-28'
-    author: baljay
+    author: <governance-admin>
     justification: Add Operating Philosophy preamble stating the ReAct + HITL 'human
       decides / human uses the tool' paradigm the 13 tenets serve; strengthens intent,
       alters no tenet.

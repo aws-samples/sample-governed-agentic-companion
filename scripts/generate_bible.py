@@ -73,7 +73,8 @@ def generate(knowledge_root: Path = KNOWLEDGE_ROOT) -> str:
         key = str(rel).replace(".yaml", "").replace("\\", "/")
         try:
             data = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
-        except Exception:
+        except Exception as e:  # an unparsable file is left out of the corpus
+            print(f"skip {rel}: {type(e).__name__}", file=sys.stderr)
             continue
         n_lines = len(path.read_text(encoding="utf-8").splitlines()) or 1
         end = min(n_lines, 12)
