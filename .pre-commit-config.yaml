@@ -24,7 +24,7 @@ repos:
         # Terraform-adjacent YAML only; skip generated/vendored trees.
         exclude: '^(\.terraform/|.*/cdk\.out/)'
 
-  # Secret detection (a local counterpart to CI's detect-secrets stage).
+  # Secret detection with gitleaks (complements CI's detect-secrets stage).
   - repo: https://github.com/gitleaks/gitleaks
     rev: v8.21.2
     hooks:

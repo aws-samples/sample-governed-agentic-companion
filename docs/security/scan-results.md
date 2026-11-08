@@ -155,7 +155,7 @@ with its own customer managed key, not suppressed.
 | Checkov terraform, `modules/backend-bootstrap` | 33 / 0 / 3 | 33 / 0 / 3 |
 | Checkov terraform, `modules/shared-identity` | no checks | no checks (Cognito resources only) |
 | Checkov dockerfile (both images, every stage) | 332 / 0 / 0 | 308 / 0 / 0 |
-| Checkov secrets, github_actions | 0 findings | 0 findings (no workflows) |
+| Checkov secrets, github_actions | 0 findings | secrets 0 findings; github_actions (`.github/workflows/ci.yml`) 148 / 0 / 0 |
 | Bandit, every level | 0 | 0 (High 0, Medium 0, Low 0) |
 | pip-audit, each of the 4 requirements files (host resolution, see above) | 0 | 0 |
 | detect-secrets (tracked files, ledger excluded) | 0 | 0 (every allowlisted line is in the table below) |
@@ -165,7 +165,7 @@ with its own customer managed key, not suppressed.
 | Trivy `sbom` over `resvg_py.cyclonedx.json` (74 components, resvg 0.48.1) | 0 | 0 |
 
 This repository's CI is `.github/workflows/ci.yml`, scanned by the Checkov `github_actions`
-framework; the port's results are in the pull request.
+framework (148 passed, 0 failed, 0 skipped).
 
 The 3.3.0 page recorded 574 passed checks for the companion stack. Re-running the command above on
 the 3.3.0 tree gives 488, the same as 3.3.1, so the difference is in how the earlier number was

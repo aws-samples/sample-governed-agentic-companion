@@ -3,6 +3,11 @@
 
 # Vulnerability triage and remediation plan — 2026-10-10
 
+> Historical record. It describes the CI pipeline of the source repository this starter kit was
+> developed in, including its security dashboard and its Gitleaks secret-detection job. This
+> repository's CI is `.github/workflows/ci.yml`, which runs detect-secrets instead; gitleaks runs
+> here only as a local pre-commit hook.
+
 Source of truth: `<vulnerability-export>.csv`
 (CI security-dashboard export, 108 data rows). Scanned commit per the pipeline log: `b7595a1`
 (current `HEAD`/`origin/main`). This is the design/triage phase — **no source is edited here**.

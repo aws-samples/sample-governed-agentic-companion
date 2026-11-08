@@ -3,6 +3,11 @@
 
 # Security-remediation review — CI vulnerability export 2026-10-10
 
+> Historical record. It describes the CI pipeline of the source repository this starter kit was
+> developed in, including its security dashboard and its Gitleaks secret-detection job. This
+> repository's CI is `.github/workflows/ci.yml`, which runs detect-secrets instead; gitleaks runs
+> here only as a local pre-commit hook.
+
 The remediation bumps two dependency pins (PyJWT, mcp) across the AgentCore app requirements files,
 suppresses one Gitleaks false positive inline on the repo's own password-in-URL *detector*, annotates
 `.gitleaks.toml`, and de-collides the `leak_scan.sh` customer-pattern placeholders. Everything in the

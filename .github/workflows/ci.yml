@@ -1,6 +1,6 @@
 # CI for the Governed Agentic Companion (GitHub Actions).
 #
-# Runs on every push to main and every pull request to main: unit tests, YAML
+# Runs on every push (any branch) and every pull request to main: unit tests, YAML
 # validation, a customer-data/secret leak scan, the static security gate, KICS,
 # Terraform fmt/validate/test with mocked providers, and workflow linters.
 #
@@ -14,8 +14,9 @@
 # Every action is pinned by full commit SHA and every container image by digest.
 name: CI
 on:
+  # No branch filter on push: the docs and PRINCIPLES.md state that the integrity
+  # check runs in CI on every push.
   push:
-    branches: [main]
   pull_request:
     branches: [main]
 permissions:
