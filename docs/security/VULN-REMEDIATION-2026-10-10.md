@@ -5,8 +5,8 @@
 
 Companion to the triage plan `docs/security/VULN-TRIAGE-2026-10-10.md`. This document records
 the **implemented** remediation and the **verification evidence** for every detected row in the
-GitLab vulnerability export
-`backup/personal_projects-alias_b-baljay-governed-agentic-companion_vulnerabilities_2026-10-10T0512.csv`.
+CI security-dashboard export
+`<vulnerability-export>.csv`.
 
 Governed by `PRINCIPLES.md`: no environment was deployed/applied/mutated (Tenet 1 — no
 `terraform plan`/`apply`), no customer-identifying data is present (Tenet 6), and **no security
@@ -24,7 +24,7 @@ Detected rows by tool / scanner:
 
 | Tool | Scanner | Rows |
 |---|---|---:|
-| dependency_scanning | GitLab SBoM | 30 |
+| dependency_scanning | CI dependency-scanning SBoM | 30 |
 | dependency_scanning | Trivy | 28 |
 | sast | PSScriptAnalyzer | 15 |
 | sast | ShellCheck | 3 |
@@ -43,7 +43,7 @@ Disposition arithmetic (must cover all 93):
 | **Total** | **93** | ✓ 58 + 2 + 33 = 93 |
 
 > "ACCEPTED / already-remediated" means the fix or disposition is **already present in the
-> working tree at the scanned commit `b7595a1`**; these are stale GitLab records that a fresh
+> working tree at the scanned commit `b7595a1`**; these are stale dashboard records that a fresh
 > default-branch scan auto-resolves. Each was re-verified in this pass (evidence below). No new
 > `docs/SECURITY.md` SD rows were required — every IaC acceptance already maps to an existing SD
 > row with a reviewed inline suppression.
@@ -52,7 +52,7 @@ Disposition arithmetic (must cover all 93):
 
 ## Category A — PyJWT 2.13.0 dependency CVEs (56 rows) — FIXED
 
-14 distinct CVEs, each recorded 4× (GitLab SBoM + Trivy, across the orchestrator and mcp_runtime
+14 distinct CVEs, each recorded 4× (CI dependency-scanning SBoM + Trivy, across the orchestrator and mcp_runtime
 `requirements.txt`) = 56 rows.
 
 **Fix:** bumped `PyJWT[crypto]==2.13.0` → `PyJWT[crypto]==2.15.1` in **both**
@@ -105,7 +105,7 @@ secrets, not a secret.
 
 **Fix:** appended `# gitleaks:allow` to the detector line. The regex is **unchanged** — detection
 behavior is intact (verified by `tests/test_data_protection.py`). Added a note to `.gitleaks.toml`
-explaining that GitLab Secret-Detection runs the default Gitleaks ruleset (it does not consume the
+explaining that the CI secret-detection job runs the default Gitleaks ruleset (it does not consume the
 repo-local path allowlist), so the inline annotation is what suppresses the finding there; the
 existing `paths` allowlist still covers local `--config .gitleaks.toml` runs. No detector removed
 or weakened.
@@ -113,7 +113,7 @@ or weakened.
 ## Category D — SAST lint on onboarding scripts (19 rows) — ALREADY FIXED / 1 FALSE POSITIVE
 
 All 19 rows were re-verified against the working tree at the scanned commit. No code change was
-required — the fixes are already present (stale GitLab records that auto-resolve on the next scan).
+required — the fixes are already present (stale dashboard records that auto-resolve on the next scan).
 1 of the 19 is a false positive.
 
 | CSV finding (count) | Verified state in working tree | Disposition |
@@ -155,7 +155,7 @@ nothing newly accepted was introduced.
 1. `agentcore/app/orchestrator/requirements.txt` — PyJWT `2.13.0` → `2.15.1`; CVE comment refreshed.
 2. `agentcore/app/mcp_runtime/requirements.txt` — PyJWT `2.13.0` → `2.15.1`; mcp `1.28.0` → `1.30.0`; both CVE comments refreshed.
 3. `agents/data_protection.py` — appended `# gitleaks:allow` to the connection-string password **detector** line (regex unchanged).
-4. `.gitleaks.toml` — added an explanatory note on the inline suppression vs the default GitLab ruleset (no allowlist entry removed).
+4. `.gitleaks.toml` — added an explanatory note on the inline suppression vs the default CI ruleset (no allowlist entry removed).
 5. `docs/security/VULN-REMEDIATION-2026-10-10.md` — this report.
 
 (`scripts/leak_scan.sh` was staged by the orchestrator before this step and was left as-is.)
@@ -234,8 +234,8 @@ terraform validate                → Success! The configuration is valid.
 run **could not be executed here**. The suppression correctness is verified indirectly: the
 detector regex is byte-for-byte unchanged (only a trailing `# gitleaks:allow` comment was added),
 `tests/test_data_protection.py` passes (redaction behavior intact), and `# gitleaks:allow` is the
-standard inline-allowlist directive the default GitLab Gitleaks ruleset honours. This is stated
-honestly as **not locally verified**; it will be confirmed by the next GitLab Secret-Detection run.
+standard inline-allowlist directive the default Gitleaks ruleset honours. This is stated
+honestly as **not locally verified**; it will be confirmed by the next run of the CI secret-detection job.
 
 ---
 
@@ -245,6 +245,6 @@ honestly as **not locally verified**; it will be confirmed by the next GitLab Se
   a released fix).
 - The Gitleaks row is a confirmed false positive on a detection control; suppressed without
   weakening the control. Local gitleaks execution was unavailable (noted above).
-- Categories D and E are already remediated/dispositioned in the working tree; the GitLab records
+- Categories D and E are already remediated/dispositioned in the working tree; the dashboard records
   are stale and auto-resolve on the next default-branch scan. If any D/E row persists post-scan,
-  dismiss it in GitLab citing the SD row / FP rationale here — do **not** add a blanket disable.
+  dismiss it in the security dashboard citing the SD row / FP rationale here — do **not** add a blanket disable.

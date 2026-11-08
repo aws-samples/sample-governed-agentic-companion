@@ -51,16 +51,53 @@ by the AgentCore service-layer footprint (Gateway, Memory, compute, and storage)
 
 | Item | Qty | ~$/month |
 |---|---|---|
-| KMS keys (KB + ECR + M2M) | 3 | ~$3.00 |
-| Secrets Manager (M2M secret) | 1 | ~$0.40 |
+| KMS keys (KB + ECR) | 2 | ~$2.00 |
 | S3 (KB + logs, few MB) | <1 GB | ~$0.05 |
 | ECR (2 images) | ~1–2 GB | ~$0.20 |
 | CloudWatch Logs (idle-ish) | ~1 GB | ~$0.60 |
-| **Fixed floor** | | **~$4.25/month** |
+| **Fixed floor** | | **~$2.85/month** |
 
 There is **no idle Runtime/Gateway/Memory charge** — those bill only on use. An unused full
-deployment costs roughly **$4/month** (mostly the 3 CMKs). A minimal deployment
-(`deploy_gateway=false`, `enable_memory=false`) drops the M2M key + secret and lands near **$3**.
+deployment costs roughly **$3/month** (mostly the 2 CMKs). The kit creates no Secrets Manager
+secret (the gateway's M2M credential lives in the AgentCore Identity Token Vault), so a minimal
+deployment (`deploy_gateway=false`, `enable_memory=false`) has the same fixed floor.
+These floors are for **public mode**. Private mode (the default) adds the always-on interface
+endpoint hours below.
+
+### Private mode networking (`network_access = "private"`, default)
+
+Interface VPC endpoints (AWS PrivateLink) are billed **for each hour an endpoint is provisioned
+in each Availability Zone**, whether or not traffic flows, with partial hours billed as full hours,
+plus a **data processing charge per GB** through the endpoints
+([AWS PrivateLink pricing](https://aws.amazon.com/privatelink/pricing/)). The hourly rate is
+Region-specific and shown on that page; this document invents no figure for it. The page's own
+cross-Region interface-endpoint example bills data processing at $0.01 per GB; check the
+Interface Endpoint table for your Region. The companion's traffic is small API calls and model
+I/O, so the endpoint hours, not data processing, set the private-mode floor.
+
+| Item | Count (configured values, not prices) | Charge basis |
+|---|---|---|
+| Interface endpoints, default set | 6: `ecr.api`, `ecr.dkr`, `logs`, `xray`, `bedrock-runtime`, `bedrock-agentcore` | per endpoint per AZ-hour + per GB |
+| Gateway endpoint (`deploy_gateway = true`) | +1: `bedrock-agentcore.gateway` | same |
+| Comprehend (`pii_backend = "comprehend"`) | +1 | same |
+| `extra_interface_endpoint_services` | +1 each | same |
+| AZs per endpoint | the number of `private_subnet_ids` (2 in the sandbox VPC and the recommended minimum) | multiplies the endpoint-hours |
+| Reused endpoints (`existing_interface_endpoint_ids`) | 0 new for those keys | billed to whoever owns them |
+| S3 gateway endpoint | 1 | no additional charge ([gateway endpoints](https://docs.aws.amazon.com/vpc/latest/privatelink/gateway-endpoints.html)) |
+| NAT gateway | none created | n/a |
+| Route 53 Resolver inbound endpoint (`enable_resolver_inbound_endpoint = true`, default off) | 1 endpoint with 2 IPs (one per subnet) | per IP-hour + per million queries ([Route 53 pricing](https://aws.amazon.com/route53/pricing/)); with tracked SG rules about 1500 queries per second per IP, scale by adding IPs |
+| Private access probe (`enable_private_access_probe = true`, default off) | 1 Lambda function, 1 log group (365-day retention), 1 KMS key, 1 SQS dead-letter queue | per invocation and GB-second plus log ingestion and storage ([Lambda pricing](https://aws.amazon.com/lambda/pricing/)), one KMS key-month while enabled ([KMS pricing](https://aws.amazon.com/kms/pricing/)); the empty queue and the VPC ENIs carry no charge |
+| VPC Flow Logs (a VPC the kit creates: `create_vpc = true`, or the platform shared VPC) | 1 flow log to 1 log group (365-day retention), 1 KMS key | vended-log ingestion and storage ([CloudWatch pricing](https://aws.amazon.com/cloudwatch/pricing/)) scale with traffic; one KMS key-month. A VPC you bring adds nothing |
+| Shared platform network (`platform/`, `enable_private_network = true`) | one endpoint set shared by every consuming companion | the same endpoint charges once instead of once per companion; consumers create no endpoints |
+
+So the default private deployment with a gateway runs **7 interface endpoints × 2 AZs = 14
+endpoint-AZ-hours per hour**, around the clock, priced at your Region's rate. Turning off
+`enable_xray_endpoint` or `enable_bedrock_runtime_endpoint` (only if those services are not
+needed), or reusing central endpoints, reduces the count.
+
+Customer-owned access costs, not created by the kit unless you opt in: Route 53 Resolver inbound
+endpoints for DNS forwarding (the opt-in above) and DNS Firewall ([Route 53 pricing](https://aws.amazon.com/route53/pricing/)), and AWS
+Client VPN or Site-to-Site VPN for the developer network ([AWS VPN pricing](https://aws.amazon.com/vpn/pricing/)).
 
 ## 3. Per-request cost model
 
@@ -90,22 +127,22 @@ tier) ON.
 - LLM calls: 5 × 10 × 22 = **1,100/month** → × $0.041 ≈ **$45**
 - Deterministic calls (negligible tokens): ~$1
 - Memory (a few hundred sessions): ~$1
-- Fixed floor: ~$4
-- **≈ $51/month** (~$10/builder/month)
+- Fixed floor: ~$3
+- **≈ $50/month** (~$10/builder/month)
 
 ### Medium team — 25 builders, ~15 LLM calls/builder/day
 - LLM calls: 25 × 15 × 22 = **8,250/month** → × $0.041 ≈ **$338**
 - Memory (more sessions + cross-builder summaries): ~$8
 - Gateway tool calls (~30k/mo): ~$0.15
-- Compute: ~$3; Fixed floor: ~$4
-- **≈ $355/month** (~$14/builder/month)
+- Compute: ~$3; Fixed floor: ~$3
+- **≈ $354/month** (~$14/builder/month)
 
 ### Large team — 100 builders, ~20 LLM calls/builder/day
 - LLM calls: 100 × 20 × 22 = **44,000/month** → × $0.041 ≈ **$1,800**
 - Memory (thousands of sessions, long-term recall): ~$40
 - Gateway (~150k tool calls/mo): ~$0.75
-- Compute: ~$12; CloudWatch (higher log volume): ~$15; Fixed floor: ~$4
-- **≈ $1,875/month** (~$19/builder/month)
+- Compute: ~$12; CloudWatch (higher log volume): ~$15; Fixed floor: ~$3
+- **≈ $1,874/month** (~$19/builder/month)
 
 **Takeaway:** cost scales almost linearly with LLM-call volume and lands around **$10–$19 per
 builder per month**, dominated by Bedrock tokens. The AgentCore service layers
@@ -134,8 +171,8 @@ model choice and context size — a larger model or bigger contexts move the per
 7. **Memory hygiene.** `memory_event_expiry_days` (default 30) bounds short-term Events; let
    long-term memory store *summaries*, not raw turns.
 8. **Disable what you don't use.** `enable_memory=false` removes the Memory layer;
-   `deploy_gateway=false` uses the direct-runtime path (no Gateway tool-call charge + drops the M2M
-   key/secret) for a single-team internal deployment. Both are supported flags.
+   `deploy_gateway=false` uses the direct-runtime path (no Gateway tool-call charge) for a
+   single-team internal deployment. Both are supported flags.
 
 ## 6. Cost vs the governance model (no conflict)
 
