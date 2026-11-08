@@ -430,7 +430,7 @@ VPC endpoints; the MCP runtime only from the gateway role) is unchanged.
 | D8 | `scripts/diagram_fixture.py` line 19, `tests/test_diagram_manifest.py` (2 lines), `tests/test_diagram_labels.py`, `tests/test_governance_gate_refactor.py` | The AWS Secrets Manager icon path in the synthetic icon fixture, a 12-hex short-hash fixture, and fake secrets built by concatenation to exercise the label policy and the gate |
 | D9 | `docs/security/scan-results.md` (tools table, command lines, base-image table) | Public digests of the pinned scanner images (KICS, Trivy, Grype) and of the Chainguard base images |
 | D10 | `agentcore/app/orchestrator/Dockerfile`, `agentcore/app/mcp_runtime/Dockerfile` (3 lines each) | The public digests of the Chainguard base images on the `FROM` lines (`pragma: allowlist nextline secret` above each) |
-| D11 | `scripts/security_gate.sh` (3 lines) | The public digests of the pinned KICS, Trivy and Grype images |
+| D11 | `scripts/security_gate.sh` (3 lines) | The public digests of the pinned KICS, Trivy and Grype images. The same KICS and actionlint digests in `.github/workflows/ci.yml` are not flagged by detect-secrets, so that file needs no pragma |
 | D7 | `governance/integrity.yaml` (excluded by path) | SHA-256 digests of `PRINCIPLES.md`, public by design. `scripts/rebaseline_integrity.py` rewrites this file and drops comments, so an inline pragma would not survive |
 
 ## Out of scope for these tools

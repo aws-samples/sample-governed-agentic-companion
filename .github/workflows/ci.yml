@@ -1,62 +1,192 @@
-
 # CI for the Governed Agentic Companion (GitHub Actions).
 #
-# Ported from the internal GitLab CI pipeline. Runs on every push and pull
-# request: installs the deterministic-tier dependencies and runs the unit tests.
+# Runs on every push to main and every pull request to main: unit tests, YAML
+# validation, a customer-data/secret leak scan, the static security gate, KICS,
+# Terraform fmt/validate/test with mocked providers, and workflow linters.
 #
-# All jobs are read-only verification — nothing deploys or mutates any
-# environment (PRINCIPLES.md Tenets 1 and 3). The deterministic Tier-1 path
-# needs no AWS or LLM credentials, so the suite runs fully offline in CI.
-
+# All jobs are read-only verification: nothing deploys or mutates any
+# environment (PRINCIPLES.md Tenets 1 and 3). No AWS or LLM credentials are used
+# anywhere; the deterministic Tier-1 path and the mocked Terraform tests run
+# fully offline. The Trivy and Grype image scans need local image builds, so they
+# run in the full local gate (./scripts/security_gate.sh --require-icons) before
+# a release, not here.
+#
+# Every action is pinned by full commit SHA and every container image by digest.
 name: CI
-
 on:
   push:
     branches: [main]
   pull_request:
     branches: [main]
-
 permissions:
   contents: read
-
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 jobs:
+  # Unit tests (offline: no AWS or LLM needed for the deterministic core).
   tests:
     name: Unit tests (offline)
     runs-on: ubuntu-24.04
+    timeout-minutes: 30
     strategy:
+      fail-fast: false
       matrix:
         # pytest 9 requires Python >= 3.10, so 3.10 is the tested floor.
         python-version: ["3.10", "3.13"]
     steps:
-      - uses: actions/checkout@v4
-
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
       - name: Set up Python ${{ matrix.python-version }}
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
           python-version: ${{ matrix.python-version }}
-          cache: pip
-
       - name: Install dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install -r requirements.txt
-
+        run: python -m pip install -r requirements.txt
       - name: Run tests
         run: python -m pytest -q
 
+  # YAML validation: every tracked YAML file must parse.
+  yaml-validation:
+    name: YAML validation
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.12"
+      # Same PyYAML pin as requirements.txt (no unpinned resolution at run time).
+      - name: Install PyYAML
+        run: python -m pip install pyyaml==6.0.3
+      - name: Validate YAML
+        run: ./scripts/validate_yaml.sh
+
+  # Customer-data / secret leak scan: the repo stays customer-agnostic and
+  # secret-free (Tenet 6).
+  leak-scan:
+    name: Leak scan
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Leak scan
+        run: ./scripts/leak_scan.sh
+
+  # The kit's standard security gate without Docker: tracked junk, relative
+  # links, Checkov (terraform, dockerfile, secrets, github_actions), Bandit (all
+  # levels), pip-audit on every requirements file, detect-secrets and the
+  # accepted-residuals review dates, each with pinned versions.
+  security-gate-static:
+    name: Security gate (static)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.12"
+      - name: Security gate (static stages)
+        run: ./scripts/security_gate.sh --static
+
+  # KICS from the same pinned image as the local gate; fails on any
+  # unsuppressed finding. checkmarx/kics:v2.2.0 (public image digest).
+  kics:
+    name: KICS
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: KICS scan
+        run: |
+          mkdir -p "$RUNNER_TEMP/kics-out" && chmod 777 "$RUNNER_TEMP/kics-out"
+          docker run --rm -v "$GITHUB_WORKSPACE:/path:ro" -v "$RUNNER_TEMP/kics-out:/out" checkmarx/kics@sha256:ef29dbac14b046b1ef65f3280646112e927a61781c5f01bca1aeb723e0b96003 scan -p /path --exclude-paths /path/.git -o /out --report-formats json --no-progress
+      - name: Upload KICS results
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: kics-results
+          path: ${{ runner.temp }}/kics-out/
+          retention-days: 7
+
+  # Terraform static checks and the mocked test matrix (no AWS credentials,
+  # no backend, never plan or apply against an account).
+  terraform:
+    name: Terraform (fmt, validate, test with mocked providers)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        root: [agentcore/terraform, agentcore/terraform/platform]
+    defaults:
+      run:
+        working-directory: ${{ matrix.root }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e # v4.0.1
+        with:
+          terraform_version: 1.16.4
+          terraform_wrapper: false
+      - name: terraform fmt
+        run: terraform fmt -check -recursive
+      - name: terraform init (no backend)
+        run: terraform init -backend=false -input=false
+      - name: terraform validate
+        run: terraform validate
+      - name: terraform test (mocked providers)
+        run: terraform test
+
+  # GitHub Actions workflow linters: actionlint (pinned image) and zizmor.
+  workflow-lint:
+    name: Workflow lint (actionlint, zizmor)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: actionlint
+        run: |
+          # rhysd/actionlint:1.7.12 (public image digest)
+          docker run --rm -v "$GITHUB_WORKSPACE:/repo:ro" -w /repo rhysd/actionlint@sha256:b1934ee5f1c509618f2508e6eb47ee0d3520686341fec936f3b79331f9315667 -color
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.12"
+      - name: Install zizmor
+        run: python -m pip install zizmor==1.32.0
+      - name: zizmor
+        run: zizmor --offline .github/workflows
+
   # Single stable status check to require in branch protection. Its name does
-  # not change when the test matrix (Python versions) changes, so you configure
-  # the required check once. It passes only if every `tests` matrix leg passed.
+  # not change when the jobs or matrices change, so you configure the required
+  # check once. It passes only if every job above passed.
   ci-success:
     name: CI success
     if: always()
-    needs: tests
+    needs: [tests, yaml-validation, leak-scan, security-gate-static, kics, terraform, workflow-lint]
     runs-on: ubuntu-24.04
+    timeout-minutes: 15
     steps:
-      - name: Verify all test jobs passed
+      - name: Verify all jobs passed
+        env:
+          RESULTS: ${{ join(needs.*.result, ' ') }}
         run: |
-          if [ "${{ needs.tests.result }}" != "success" ]; then
-            echo "One or more test jobs did not succeed: ${{ needs.tests.result }}"
-            exit 1
-          fi
-          echo "All test jobs passed."
+          for r in $RESULTS; do
+            if [ "$r" != "success" ]; then
+              echo "One or more jobs did not succeed: $RESULTS"
+              exit 1
+            fi
+          done
+          echo "All jobs passed."
