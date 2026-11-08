@@ -1,37 +1,73 @@
 {
-  "_comment": "MCP config for the Governed Agentic Companion front door. Copy ONE server entry into your IDE's MCP config (Kiro: .kiro/settings/mcp.json — gitignored; Claude Code: .mcp.json or the plugin) and MERGE with any existing mcpServers. Never commit real paths, ARNs, tokens, or account ids. Two options — use ONE. Both expose the same two governed tools (ask_companion, companion_kb); responses are gated in the cloud.",
+  "_comment": "MCP config for the Governed Agentic Companion front door. Copy ONE option (or the kiro_example pair) into your IDE's MCP config (Kiro: .kiro/settings/mcp.json, gitignored; Claude Code: .mcp.json or the plugin) and MERGE with any existing mcpServers. Never commit real paths, ARNs, tokens, or account ids. Every value below is NON-SECRET (a URL, a Region, a public client id, a scope, a path): sign-in is in the browser, so no client secret, password, username or AWS credentials are needed. All options expose the same governed tools (ask_companion, companion_kb, draw_diagram); responses are gated in the cloud. Only the local stdio bridge LANDS diagram files: its draw_diagram verifies each SHA-256 and writes <name>.drawio/.svg/.png/.report.json under GAC_DIAGRAM_WORKSPACE_ROOT/outputs/diagrams/<name>/ (GAC_DIAGRAM_LOCAL_DIR overrides; GAC_DIAGRAM_ALLOW_OUTSIDE_WORKSPACE=true allows a folder outside it). A direct OAuth MCP client (option B, or Kiro's native oauth entry) gets the gated text and a manifest only. Sign-in: GAC_AUTH_FLOW=pkce (the default) opens the browser on the first tool call and signs in with the stack's PUBLIC PKCE client (terraform output cognito_oauth_frontdoor_client_id) against the Cognito hosted UI domain (GAC_COGNITO_DOMAIN: the cognito_hosted_ui_domain output on a stack that owns its pool; on a shared pool, https://<platform output shared_user_pool_domain>.auth.<region>.amazoncognito.com) with the scope from cognito_oauth_scope. The bridge listens on 127.0.0.1 only, on the first free port of 8080-8084, for the one callback. Headless: the sign-in URL is in the MCP server log (stderr). GAC_AUTH_FLOW=password (with GAC_COGNITO_CLIENT_SECRET, USERNAME, PASSWORD, USER_POOL_ID and the confidential cognito_frontdoor_client_id) is the test-harness and automation flow only; a client secret set under pkce is an error. Under pkce set GAC_RUNTIME_REGION / GAC_GATEWAY_REGION explicitly. autoApprove is empty on purpose: each companion tool call returns proprietary knowledge into the IDE assistant's context. A team may add tool names here, knowing those calls then run without confirmation. Private mode (default): the gateway and runtime accept requests only through your VPC endpoints; from other networks the names still resolve and requests get HTTP 403. Connect over your VPN/Direct Connect path (with DNS forwarding to a Route 53 Resolver inbound endpoint) or from an in-VPC desktop. Token sign-in to Cognito still uses public Cognito endpoints. Install the bridge deps with: pip install -r requirements-frontdoor.txt. From 3.4.0 the user must be in the companion's entitlement group (<name_prefix>-users, the token's cognito:groups); otherwise every call is denied (HTTP 403 or 'GAC: not entitled'). draw_diagram accepts natural-language questions and can return up to 4 views: the bridge saves each view in its own folder, outputs/diagrams/<view name>/.",
 
   "option_A_local_bridge": {
-    "_comment": "Kiro/Claude Code spawn frontdoor/mcp_bridge.py as a stdio MCP server. The bridge mints + auto-refreshes a Cognito access token and relays each call to the deployed AgentCore runtime. Set the absolute path to your clone and fill the env from your gitignored ~/.companion-frontdoor.env. Best for a hands-off setup and as the gateway-down fallback.",
+    "_comment": "Kiro/Claude Code spawn frontdoor/mcp_bridge.py as a stdio MCP server with the clone's .venv Python. The bridge signs in through the browser (PKCE), refreshes the token in memory, and relays each call to the deployed orchestrator runtime (GAC_BRIDGE_UPSTREAM=runtime). For the gateway instead, set GAC_BRIDGE_UPSTREAM=gateway and replace GAC_RUNTIME_ARN/GAC_RUNTIME_REGION with GAC_GATEWAY_URL/GAC_GATEWAY_REGION (see kiro_example gac-bridge). Replace each <...> with the terraform output value; none is a secret.",
     "mcpServers": {
       "companion-engine": {
-        "command": "python3",
+        "command": "/ABSOLUTE/PATH/TO/governed-agentic-companion/.venv/bin/python",
         "args": ["/ABSOLUTE/PATH/TO/governed-agentic-companion/frontdoor/mcp_bridge.py"],
         "env": {
-          "GAC_RUNTIME_ARN": "${GAC_RUNTIME_ARN}",
-          "GAC_RUNTIME_REGION": "${GAC_RUNTIME_REGION}",
-          "GAC_COGNITO_REGION": "${GAC_COGNITO_REGION}",
-          "GAC_COGNITO_USER_POOL_ID": "${GAC_COGNITO_USER_POOL_ID}",
-          "GAC_COGNITO_CLIENT_ID": "${GAC_COGNITO_CLIENT_ID}",
-          "GAC_COGNITO_CLIENT_SECRET": "${GAC_COGNITO_CLIENT_SECRET}",
-          "GAC_COGNITO_USERNAME": "${GAC_COGNITO_USERNAME}",
-          "GAC_COGNITO_PASSWORD": "${GAC_COGNITO_PASSWORD}"
+          "GAC_AUTH_FLOW": "pkce",
+          "GAC_BRIDGE_UPSTREAM": "runtime",
+          "GAC_RUNTIME_ARN": "<orchestrator_runtime_arn>",
+          "GAC_RUNTIME_REGION": "<REGION>",
+          "GAC_COGNITO_DOMAIN": "https://<DOMAIN_PREFIX>.auth.<REGION>.amazoncognito.com",
+          "GAC_COGNITO_CLIENT_ID": "<cognito_oauth_frontdoor_client_id>",
+          "GAC_COGNITO_SCOPES": "openid gac-engine/invoke",
+          "GAC_BRIDGE_TOOLS": "ask_companion,companion_kb,draw_diagram",
+          "GAC_DIAGRAM_WORKSPACE_ROOT": "/ABSOLUTE/PATH/TO/your-project"
         },
         "disabled": false,
-        "autoApprove": ["companion_kb"]
+        "autoApprove": []
       }
     }
   },
 
   "option_B_gateway_http": {
-    "_comment": "Point the IDE's MCP client (an http server) at the AgentCore Gateway's /mcp URL with a Bearer JWT. Keep the token fresh with frontdoor/gateway_token.py (print/write-env/daemon). The gateway namespaces tools by its target name 'gac' (gac___ask_companion / gac___companion_kb). Use this once the gateway is stood up; keep option A as the offline fallback. TIP: Kiro can instead use a native oauth/PKCE block (see docs/FRONT-DOORS.md) so it auto-refreshes the token.",
+    "_comment": "Point the IDE's MCP client (an http server) at the AgentCore Gateway's /mcp URL with a Bearer JWT. Keep the token fresh with frontdoor/gateway_token.py (print/write-env/daemon; the password flow). The gateway namespaces tools by its target name 'gac' (gac___ask_companion / gac___companion_kb / gac___draw_diagram). A direct-gateway client gets the diagram text and a manifest only; to land the files add the gac-bridge entry from kiro_example. TIP: Kiro can instead use its native oauth block (kiro_example gac-gateway) so it signs in and refreshes the token itself.",
     "mcpServers": {
       "companion-engine": {
         "type": "http",
         "url": "${GAC_GATEWAY_URL}",
         "headers": { "Authorization": "Bearer ${GAC_GATEWAY_TOKEN}" },
         "disabled": false,
-        "autoApprove": ["gac___companion_kb"]
+        "autoApprove": []
+      }
+    }
+  },
+
+  "kiro_example": {
+    "_comment": "Kiro pair: gac-gateway is Kiro's native OAuth (PKCE) client for questions; gac-bridge is the stdio bridge, which lands the diagram files. Both use the same public PKCE client and non-secret values only. gac-gateway disables its own gac___draw_diagram (the name shown in Kiro's MCP server view) so the assistant sees one draw_diagram, the bridge's, which saves the files; gac-bridge registers only draw_diagram (GAC_BRIDGE_TOOLS) for the same reason. Expect two sign-ins, one per entry. Kiro's own OAuth may hold port 8080; the bridge then uses the next free port of 8080-8084 (every one is a registered callback).",
+    "mcpServers": {
+      "gac-gateway": {
+        "_comment": "Questions through the gateway with Kiro's native OAuth. Diagrams go through gac-bridge, which saves the files.",
+        "url": "https://<GATEWAY_HOST>.gateway.bedrock-agentcore.<REGION>.amazonaws.com/mcp",
+        "oauth": {
+          "clientId": "<cognito_oauth_frontdoor_client_id>",
+          "redirectUri": "http://127.0.0.1:8080",
+          "oauthScopes": ["openid", "gac-engine/invoke"]
+        },
+        "disabled": false,
+        "autoApprove": [],
+        "disabledTools": ["gac___draw_diagram"]
+      },
+      "gac-bridge": {
+        "command": "/ABSOLUTE/PATH/TO/governed-agentic-companion/.venv/bin/python",
+        "args": ["/ABSOLUTE/PATH/TO/governed-agentic-companion/frontdoor/mcp_bridge.py"],
+        "env": {
+          "GAC_AUTH_FLOW": "pkce",
+          "GAC_BRIDGE_UPSTREAM": "gateway",
+          "GAC_BRIDGE_TOOLS": "draw_diagram",
+          "GAC_GATEWAY_URL": "https://<GATEWAY_HOST>.gateway.bedrock-agentcore.<REGION>.amazonaws.com/mcp",
+          "GAC_GATEWAY_REGION": "<REGION>",
+          "GAC_COGNITO_DOMAIN": "https://<DOMAIN_PREFIX>.auth.<REGION>.amazoncognito.com",
+          "GAC_COGNITO_CLIENT_ID": "<cognito_oauth_frontdoor_client_id>",
+          "GAC_COGNITO_SCOPES": "openid gac-engine/invoke",
+          "GAC_DIAGRAM_WORKSPACE_ROOT": "/ABSOLUTE/PATH/TO/your-project"
+        },
+        "disabled": false,
+        "autoApprove": []
       }
     }
   }

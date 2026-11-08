@@ -1,21 +1,20 @@
 {
-  "_comment": "Kiro MCP config for the Governed Agentic Companion cloud front door via the LOCAL BRIDGE. Kiro spawns frontdoor/mcp_bridge.py as a stdio MCP server; the bridge forwards to the deployed AgentCore runtime with a Cognito access token it mints + auto-refreshes. Copy the companion-engine entry into your workspace .kiro/settings/mcp.json (or ~/.kiro/settings/mcp.json) and MERGE with any existing mcpServers. Set the absolute path to your clone and fill the env from your gitignored ~/.companion-frontdoor.env (see frontdoor/README.md) — never commit real secrets, ARNs, or account ids. Governance is unchanged: the bridge only relays; the runtime's response is already gated in the cloud; a human deploys (Tenet 1).",
+  "_comment": "Kiro MCP config for the Governed Agentic Companion cloud front door via the LOCAL BRIDGE. Kiro spawns frontdoor/mcp_bridge.py as a stdio MCP server; the bridge signs in through the browser (PKCE, the public cognito_oauth_frontdoor_client_id client; no secret or password) on the first tool call, refreshes the token in memory, and forwards to the deployed AgentCore runtime. Copy the companion-engine entry into your workspace .kiro/settings/mcp.json (or ~/.kiro/settings/mcp.json) and MERGE with any existing mcpServers. Set the absolute path to your clone and replace each <...> with the terraform output value (none is a secret; see docs/FRONT-DOORS.md) — never commit real ARNs or account ids. Governance is unchanged: the bridge only relays; the runtime's response is already gated in the cloud; a human deploys (Tenet 1). autoApprove is empty on purpose: each companion tool call returns proprietary knowledge into the IDE assistant's context. A team may add tool names here, knowing those calls then run without confirmation. Private mode (default): the gateway and runtime accept requests only through your VPC endpoints; from other networks the names still resolve and requests get HTTP 403. Connect over your VPN/Direct Connect path (with DNS forwarding to a Route 53 Resolver inbound endpoint) or from an in-VPC desktop. Token sign-in to Cognito still uses public Cognito endpoints.",
   "mcpServers": {
     "companion-engine": {
-      "command": "python3",
+      "command": "/ABSOLUTE/PATH/TO/governed-agentic-companion/.venv/bin/python",
       "args": ["/ABSOLUTE/PATH/TO/governed-agentic-companion/frontdoor/mcp_bridge.py"],
       "env": {
-        "GAC_RUNTIME_ARN": "${GAC_RUNTIME_ARN}",
-        "GAC_RUNTIME_REGION": "${GAC_RUNTIME_REGION}",
-        "GAC_COGNITO_REGION": "${GAC_COGNITO_REGION}",
-        "GAC_COGNITO_USER_POOL_ID": "${GAC_COGNITO_USER_POOL_ID}",
-        "GAC_COGNITO_CLIENT_ID": "${GAC_COGNITO_CLIENT_ID}",
-        "GAC_COGNITO_CLIENT_SECRET": "${GAC_COGNITO_CLIENT_SECRET}",
-        "GAC_COGNITO_USERNAME": "${GAC_COGNITO_USERNAME}",
-        "GAC_COGNITO_PASSWORD": "${GAC_COGNITO_PASSWORD}"
+        "GAC_AUTH_FLOW": "pkce",
+        "GAC_RUNTIME_ARN": "<orchestrator_runtime_arn>",
+        "GAC_RUNTIME_REGION": "<REGION>",
+        "GAC_COGNITO_DOMAIN": "https://<DOMAIN_PREFIX>.auth.<REGION>.amazoncognito.com",
+        "GAC_COGNITO_CLIENT_ID": "<cognito_oauth_frontdoor_client_id>",
+        "GAC_COGNITO_SCOPES": "openid gac-engine/invoke",
+        "GAC_DIAGRAM_WORKSPACE_ROOT": "/ABSOLUTE/PATH/TO/your-project"
       },
       "disabled": false,
-      "autoApprove": ["companion_kb"]
+      "autoApprove": []
     }
   }
 }

@@ -77,7 +77,7 @@ Register it as an MCP server the harness can call before accepting an AI-produce
 }
 ```
 
-## Guarantees preserved
+## What stays enforced
 
 - **No off switch.** Neither surface adds a bypass; the gate enforces the same whether called by
   the engine, the plugin, this hook, or the MCP tool.

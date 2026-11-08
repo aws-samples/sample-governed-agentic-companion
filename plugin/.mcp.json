@@ -1,5 +1,6 @@
 {
-  "_comment": "Claude Code front-door MCP config for the Governed Agentic Companion. Collaboration surfaces (Jira/Confluence/GitHub) are read+write for human-reviewed artifacts; AWS is read-only (target state); the governed engine is reached through the `companion-engine` server. Use ONE companion-engine transport: the AgentCore Gateway HTTP endpoint (shown here) OR the local stdio bridge (see frontdoor/mcp.example.json). Fill ${...} from your gitignored env; never commit real endpoints, ARNs, tokens, or account ids. Every companion-engine response is already gated in the cloud (Tenets 1/3/4).",
+  "_comment": "Claude Code front-door MCP config for the Governed Agentic Companion. Collaboration surfaces (Jira/Confluence/GitHub) are read+write for human-reviewed artifacts; AWS is read-only (target state); the governed engine is reached through the `companion-engine` server (questions) and the `companion-files` stdio bridge (draw_diagram, which writes the verified diagram files under your workspace; landing files needs the stdio bridge). Use ONE companion-engine transport: the AgentCore Gateway HTTP endpoint (shown here) OR the local stdio bridge (see frontdoor/mcp.example.json). Fill ${...} from your gitignored env; never commit real endpoints, ARNs, tokens, or account ids. Every companion-engine response is already gated in the cloud (Tenets 1/3/4).",
+  "_supply_chain_note": "SUPPLY CHAIN: the uvx/npx tool entries below use '@latest', which resolves to the newest published package version at run time and cannot be audited or reproduced. Before using this config, PIN each entry (mcp-atlassian, @modelcontextprotocol/server-github, awslabs.aws-api-mcp-server) to a specific tested version and update deliberately. '@latest' is kept here only as a template placeholder so forks pick current tooling; a compromised or breaking upstream release would otherwise propagate automatically.",
   "mcpServers": {
     "confluence": {
       "command": "uvx",
@@ -33,11 +34,27 @@
       }
     },
     "companion-engine": {
-      "_comment": "Governed engine via the AgentCore Gateway. GAC_GATEWAY_URL is the gateway's /mcp URL, e.g. https://<gateway-id>.gateway.bedrock-agentcore.<region>.amazonaws.com/mcp; GAC_GATEWAY_TOKEN is a valid IdP JWT (a Cognito user/PKCE-client token in the reference deployment). The gateway namespaces tools by its target name 'gac', so they surface as gac___ask_companion / gac___companion_kb; responses are gated in the cloud. ALTERNATIVE: swap this entry for the local stdio bridge from frontdoor/mcp.example.json (option A) when the gateway is not stood up. Fill both env vars from your gitignored env; never commit a real URL or token.",
+      "_comment": "Governed engine via the AgentCore Gateway. GAC_GATEWAY_URL is the gateway's /mcp URL, e.g. https://<gateway-id>.gateway.bedrock-agentcore.<region>.amazonaws.com/mcp; GAC_GATEWAY_TOKEN is a valid IdP JWT (a Cognito user/PKCE-client token in the reference deployment). The gateway namespaces tools by its target name 'gac', so they surface as gac___ask_companion / gac___companion_kb / gac___draw_diagram; responses are gated in the cloud. ALTERNATIVE: swap this entry for the local stdio bridge from frontdoor/mcp.example.json (option A) when the gateway is not stood up. Fill both env vars from your gitignored env; never commit a real URL or token.",
       "type": "http",
       "url": "${GAC_GATEWAY_URL}",
       "headers": {
         "Authorization": "Bearer ${GAC_GATEWAY_TOKEN}"
+      }
+    },
+    "companion-files": {
+      "_comment": "Local stdio bridge for draw_diagram only: it relays to the AgentCore Gateway (GAC_BRIDGE_UPSTREAM=gateway, tool gac___draw_diagram), verifies each artefact's SHA-256 and writes <name>.drawio/.svg/.png/.report.json under GAC_DIAGRAM_WORKSPACE_ROOT/outputs/diagrams/<name>/. It signs in through the browser (PKCE) with the public client (cognito_oauth_frontdoor_client_id) on the hosted UI domain GAC_COGNITO_DOMAIN; no client secret or password. Set the absolute path to your clone and fill the env (non-secret values); never commit real values. A direct-gateway client receives text and a manifest only.",
+      "command": "python3",
+      "args": ["/ABSOLUTE/PATH/TO/governed-agentic-companion/frontdoor/mcp_bridge.py"],
+      "env": {
+        "GAC_BRIDGE_UPSTREAM": "gateway",
+        "GAC_BRIDGE_TOOLS": "draw_diagram",
+        "GAC_GATEWAY_URL": "${GAC_GATEWAY_URL}",
+        "GAC_GATEWAY_REGION": "${GAC_GATEWAY_REGION}",
+        "GAC_AUTH_FLOW": "pkce",
+        "GAC_COGNITO_DOMAIN": "${GAC_COGNITO_DOMAIN}",
+        "GAC_COGNITO_CLIENT_ID": "${GAC_COGNITO_CLIENT_ID}",
+        "GAC_COGNITO_SCOPES": "openid gac-engine/invoke",
+        "GAC_DIAGRAM_WORKSPACE_ROOT": "${GAC_DIAGRAM_WORKSPACE_ROOT}"
       }
     }
   }

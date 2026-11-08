@@ -1,0 +1,9 @@
+# Front-door helpers (frontdoor/*.py, ./run.sh diagram-fetch, the stdio bridge, the gate MCP
+# server, scripts/e2e_deployed.py). Python >= 3.10 (boto3 1.43.111 and mcp 1.30.0 require it).
+# Exact pins; boto3/botocore/mcp match agentcore/app/mcp_runtime/requirements.txt.
+pyyaml==6.0.3
+boto3==1.43.111
+botocore==1.43.111
+mcp==1.30.0
+httpx==0.28.1
+requests==2.34.2
