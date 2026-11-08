@@ -1,5 +1,10 @@
 # ECR repositories for the two runtime images (orchestrator /invocations, mcp_runtime /mcp).
 # Both are built from the SAME repo-root build context; only the Dockerfile/entrypoint differ.
+# KICS "IAM Access Analyzer Not Enabled" (K8) fires once per file with any aws_ resource and no
+# analyzer. The analyzer is an account or organization baseline control that a landing zone
+# normally owns; this kit makes it opt-in (enable_access_analyzer, access_analyzer.tf;
+# docs/SECURITY.md SD-8), so the per-file query does not apply to this file.
+# kics-scan disable=e592a0c5-5bdb-414c-9066-5dba7cdea370
 
 # Image tag mutability (checkov CKV_AWS_51): IMMUTABLE is the safe default — an image tag,
 # once pushed, cannot be overwritten, so a deployed digest is reproducible. This is compatible
@@ -13,9 +18,6 @@ locals {
 # Customer-managed KMS key for ECR image encryption. Policy defined INLINE (not an
 # aws_iam_policy_document data source) with discrete KMS actions — never kms:* — so it does not
 # trip the IAM-wildcard checks. A key policy's Resource is necessarily the key itself.
-# kics-scan ignore-line: "IAM Access Analyzer Not Enabled" is an ACCOUNT/ORG baseline control a
-# landing zone normally owns; this per-workload kit makes it opt-in via enable_access_analyzer
-# (access_analyzer.tf) to avoid colliding with a delegated org analyzer (docs/SECURITY.md SD-8).
 resource "aws_kms_key" "ecr" {
   description             = "${var.name_prefix} ECR image encryption"
   deletion_window_in_days = 7
@@ -27,6 +29,12 @@ resource "aws_kms_key" "ecr" {
         Sid       = "KeyAdministration"
         Effect    = "Allow"
         Principal = { AWS = "arn:aws:iam::${local.account_id}:root" }
+        # PRODUCTION HARDENING: these service-scoped wildcards (particularly the destructive
+        # kms:Delete*, kms:Disable*, and kms:Create*) are convenient for a self-contained
+        # sandbox kit, but for a production deployment you SHOULD replace them with the exact
+        # KMS actions your key administrators actually need, and restrict this statement to a
+        # narrow key-admin principal rather than the account root. See the AWS KMS docs for the
+        # specific actions, and apply least privilege (docs/SECURITY.md).
         Action = [
           "kms:Create*", "kms:Describe*", "kms:Enable*", "kms:List*", "kms:Put*",
           "kms:Update*", "kms:Revoke*", "kms:Disable*", "kms:Get*", "kms:Delete*",
@@ -100,10 +108,22 @@ resource "aws_ecr_lifecycle_policy" "mcp_runtime" {
 # runtime execution role (the only in-account consumer). Push is done by the local build via
 # the caller's own IAM identity, so it needs no repo-policy grant. Single-account, so no
 # cross-account principals.
+#
+# The images are a KNOWLEDGE STORE: both Dockerfiles COPY knowledge/ into the image, so pulling
+# an image discloses the corpus. AllowRuntimePull alone restricts nobody (same-account
+# principals with identity-based ECR rights are allowed regardless), so private mode (with
+# ecr_pull_restriction=true, the default) adds an explicit Deny on pulls that do not come
+# through the ecr endpoints, unless the caller is a listed knowledge admin, the runtime
+# execution role (assumable only by bedrock-agentcore.amazonaws.com), or an AWS service
+# principal. Pushing also needs ecr:BatchGetImage, so CI/terraform runners must be listed.
+# There is deliberately no via-AWS-service (forward access session) exemption: it would admit
+# pulls made for any principal through any AWS service, from anywhere. Fallback order if a runtime cannot pull: docs/DEPLOY.md.
+# https://docs.aws.amazon.com/AmazonECR/latest/userguide/repository-policy-examples.html
+# Public mode renders exactly the single AllowRuntimePull statement (today's policy).
 locals {
   ecr_repo_policy = jsonencode({
     Version = "2012-10-17"
-    Statement = [{
+    Statement = concat([{
       Sid       = "AllowRuntimePull"
       Effect    = "Allow"
       Principal = { AWS = aws_iam_role.runtime_exec.arn }
@@ -112,7 +132,19 @@ locals {
         "ecr:BatchGetImage",
         "ecr:BatchCheckLayerAvailability",
       ]
-    }]
+      }],
+      [for _ in range(local.network_private && var.ecr_pull_restriction ? 1 : 0) : {
+        Sid       = "DenyPullNotViaEcrEndpointsOrAdmins"
+        Effect    = "Deny"
+        Principal = "*"
+        Action    = ["ecr:BatchGetImage", "ecr:GetDownloadUrlForLayer"]
+        Condition = {
+          StringNotEquals = { "aws:SourceVpce" = local.ecr_vpce_ids }
+          ArnNotLike      = { "aws:PrincipalArn" = concat(local.knowledge_admin_arns_effective, [aws_iam_role.runtime_exec.arn]) }
+          BoolIfExists    = { "aws:PrincipalIsAWSService" = "false" }
+        }
+      }],
+    )
   })
 }
 

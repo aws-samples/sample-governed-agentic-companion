@@ -34,9 +34,52 @@ variable "tags" {
 # ---- Container images -------------------------------------------------------------------
 
 variable "image_tag" {
-  description = "Image tag to build/push and reference from the runtimes (e.g. a git short SHA). Using a mutable tag like 'latest' is discouraged for production."
+  description = "Image tag to build/push and reference from the runtimes (e.g. a git short SHA). Using a mutable tag like 'latest' is discouraged for production. ECR tags are immutable: set a NEW image_tag for every rebuild (for example after staging or replacing the diagram icons zip), or the push fails and the runtimes keep the old image."
   type        = string
   default     = "latest"
+}
+
+variable "diagram_icons_sha256" {
+  description = "Optional SHA-256 (64 lowercase hex) of the deployer-staged AWS Architecture Icons zip in agentcore/diagram-icons/. When set, the image build fails if the staged zip does not match. Empty = no check (the computed hash is still recorded in the image)."
+  type        = string
+  default     = ""
+  validation {
+    condition     = can(regex("^([0-9a-f]{64})?$", var.diagram_icons_sha256))
+    error_message = "diagram_icons_sha256 must be empty or 64 lowercase hex characters."
+  }
+}
+
+variable "diagram_enabled" {
+  description = "Diagram specialist on (default). false sets GAC_DIAGRAM_ENABLED=false on both runtimes, so the specialist stays registered and declines."
+  type        = bool
+  default     = true
+}
+variable "diagram_planner" {
+  description = "Diagram planner: \"deterministic\" (default, no model call) or \"bedrock\" (opt-in: one Converse call selects knowledge-base facts only; needs diagram_planner_model_id and a guardrail, and in private mode the bedrock-runtime endpoint). Sets GAC_DIAGRAM_PLANNER and the planner env on both runtimes only when \"bedrock\"."
+  type        = string
+  default     = "deterministic"
+  validation {
+    condition     = contains(["deterministic", "bedrock"], var.diagram_planner)
+    error_message = "diagram_planner must be \"deterministic\" or \"bedrock\"."
+  }
+}
+variable "diagram_planner_model_id" {
+  description = "Bedrock model or inference-profile id for diagram_planner = \"bedrock\" (the model must support Converse tool use). Empty by default."
+  type        = string
+  default     = ""
+  validation {
+    condition     = can(regex("^$|^[a-z0-9.:/-]{3,128}$", var.diagram_planner_model_id))
+    error_message = "diagram_planner_model_id must be empty or 3-128 characters of lowercase letters, digits, '.', ':', '/' and '-'."
+  }
+}
+variable "diagram_planner_model_regions" {
+  description = "Regions a cross-Region inference profile for the diagram planner may route to. Non-empty, with diagram_planner = \"bedrock\", adds DiagramPlannerCrossRegionModels (bedrock:InvokeModel on those Regions' foundation models, only through an inference profile of this account and Region). Empty (default) adds nothing."
+  type        = list(string)
+  default     = []
+  validation {
+    condition     = alltrue([for r in var.diagram_planner_model_regions : can(regex("^[a-z]{2}(-[a-z]+)+-[0-9]$", r))])
+    error_message = "diagram_planner_model_regions entries must be Region names (for example ap-southeast-2)."
+  }
 }
 
 variable "repo_root" {
@@ -62,13 +105,13 @@ variable "bedrock_model_id" {
 # ---- Knowledge base (S3) ----------------------------------------------------------------
 
 variable "kb_bucket_name" {
-  description = "Name of the S3 bucket for the self-learning KB (prefix kb/) and the curated Tier-B overlay (kb/curated/overlay.json). Leave empty to auto-name as <name_prefix>-kb-<account>-<region>-<suffix>."
+  description = "Name of the S3 bucket for the KB store prefix (kb/, reserved for a fork's own knowledge tier) and the curated Tier-B overlay (kb/curated/overlay.json). Leave empty to auto-name as <name_prefix>-kb-<account>-<region>-<suffix>."
   type        = string
   default     = ""
 }
 
 variable "kb_prefix" {
-  description = "S3 key prefix for the self-learning KB store. The IAM read/write grant is scoped to this prefix."
+  description = "S3 key prefix for the KB store, reserved for a fork's own knowledge tier. The IAM read/write grant is scoped to this prefix."
   type        = string
   default     = "kb"
 }
@@ -237,9 +280,8 @@ variable "allow_unauthenticated" {
 # The Cognito POOL + users are a SHARED PLATFORM component (one logical instance all flavors
 # reference). When true (default) this deployment OWNS the pool (today's behavior). When false
 # it CONSUMES the shared pool another stack created, supplying the pool coordinates below; this
-# fork still creates its OWN resource-server scope + clients IN the shared pool (isolation).
-# Only ONE deployment per account should own the pool. See AGENTS.md ("Shared-identity consume
-# path") for the model and the OWN-vs-CONSUME walkthrough.
+# flavor still creates its OWN resource-server scope + clients IN the shared pool (isolation).
+# Only ONE deployment per account should own the pool. See platform/README.md for the model.
 
 variable "manage_identity_pool" {
   description = "When true (default), CREATE and own the Cognito pool/domain. When false, CONSUME the shared pool via existing_user_pool_id/existing_oidc_issuer (this flavor still creates its own clients in that pool)."
@@ -277,7 +319,61 @@ variable "existing_oauth_frontdoor_client_id" {
   default     = ""
 }
 
+# ---- Entitlement group (who may use this companion) -------------------------------------
+# The gateway and orchestrator JWT authorizers (and the MCP runtime's, when it has one and the
+# gateway does not use OAuth) require the token's group claim to CONTAIN the entitlement group.
+# The interceptor re-checks it (defence in depth). See cognito.tf and docs/DEPLOY.md.
+
+variable "require_entitlement_group" {
+  description = "Enforce the entitlement group claim (default true). false is refused in public mode; in private mode it is allowed but weaker (any user of the pool with a front-door client token gets in)."
+  type        = bool
+  default     = true
+}
+
+variable "entitlement_group_name" {
+  description = "The entitlement group. Empty (default) means \"<name_prefix>-users\"."
+  type        = string
+  default     = ""
+  validation {
+    condition     = var.entitlement_group_name == "" || can(regex("^[A-Za-z0-9_-]{1,128}$", var.entitlement_group_name))
+    error_message = "entitlement_group_name must be empty or 1-128 characters of letters, digits, '_' and '-'."
+  }
+}
+
+variable "manage_entitlement_group" {
+  description = "Create the entitlement group in the user pool. null (default) follows manage_identity_pool: the own path creates it, the consume path never does (the shared pool's owner creates it). true on the consume path is refused. false on the own path is allowed (groups managed elsewhere: create the group before the first user test)."
+  type        = bool
+  default     = null
+}
+
+variable "check_entitlement_group_exists" {
+  description = "Consume path: read the shared pool's groups at plan time (cognito-idp:ListGroups, read-only) and fail when the entitlement group is missing. Set false for a planning identity without ListGroups."
+  type        = bool
+  default     = true
+}
+
+variable "entitlement_claim_name" {
+  description = "Token claim that carries the groups. \"cognito:groups\" (default) for Cognito; for auth_mode = \"entraid\" set \"groups\" or \"roles\". Also passed to the identity interceptor."
+  type        = string
+  default     = "cognito:groups"
+  validation {
+    condition     = can(regex("^[A-Za-z0-9:_-]{1,64}$", var.entitlement_claim_name))
+    error_message = "entitlement_claim_name must be 1-64 characters of letters, digits, ':', '_' and '-'."
+  }
+}
+
 # ---- Cognito (auth_mode = "cognito") ----------------------------------------------------
+
+variable "engine_resource_server_identifier" {
+  description = "Cognito resource-server identifier for this companion; the OAuth scope is <identifier>/invoke. Default \"gac-engine\" (no change for existing deployments). Must be unique within the user pool: a second GAC companion consuming the same shared pool sets its own, for example \"<name_prefix>-engine\"."
+  type        = string
+  default     = "gac-engine"
+
+  validation {
+    condition     = can(regex("^[a-z][a-z0-9-]{1,62}$", var.engine_resource_server_identifier))
+    error_message = "engine_resource_server_identifier must be 2-63 chars, start with a letter, and use only lowercase letters, digits, and hyphens."
+  }
+}
 
 variable "cognito_frontdoor_callback_urls" {
   description = "Optional OAuth callback URLs for the front-door user client (not needed for the ADMIN_USER_PASSWORD_AUTH bridge flow; leave empty for that path)."
@@ -292,11 +388,30 @@ variable "enable_oauth_frontdoor_client" {
 }
 
 variable "oauth_frontdoor_callback_urls" {
-  description = "OAuth redirect/callback URLs for the IDE PKCE client. Kiro derives the loopback port from the mcp.json `redirectUri` (which MUST end at the port, e.g. http://127.0.0.1:8080 — no path) and appends /oauth/callback itself. Cognito requires EXACT matches, so we register both 127.0.0.1 and localhost at the fixed port. Add Claude's callback here too if needed."
+  description = "OAuth redirect/callback URLs for the IDE PKCE client. Kiro derives the loopback port from the mcp.json `redirectUri` (which MUST end at the port, e.g. http://127.0.0.1:8080 — no path) and appends /oauth/callback itself. Claude Code instead hardcodes the path as /callback (not /oauth/callback) and offers no way to configure it (see https://github.com/anthropics/claude-code/issues/58595 and /issues/66511), so Claude's loopback port needs BOTH suffixes registered. Cognito requires EXACT matches, so we register both 127.0.0.1 and localhost, with both path suffixes, at each port a builder's IDEs may use. Default covers :8080-:8084 so Kiro and Claude Code can each run two companions side by side without a port clash."
   type        = list(string)
   default = [
     "http://127.0.0.1:8080/oauth/callback",
     "http://localhost:8080/oauth/callback",
+    "http://127.0.0.1:8081/oauth/callback",
+    "http://localhost:8081/oauth/callback",
+    "http://127.0.0.1:8082/oauth/callback",
+    "http://localhost:8082/oauth/callback",
+    "http://127.0.0.1:8083/oauth/callback",
+    "http://localhost:8083/oauth/callback",
+    "http://127.0.0.1:8084/oauth/callback",
+    "http://localhost:8084/oauth/callback",
+    # Claude Code hardcodes the callback path as /callback — register it on every port too.
+    "http://127.0.0.1:8080/callback",
+    "http://localhost:8080/callback",
+    "http://127.0.0.1:8081/callback",
+    "http://localhost:8081/callback",
+    "http://127.0.0.1:8082/callback",
+    "http://localhost:8082/callback",
+    "http://127.0.0.1:8083/callback",
+    "http://localhost:8083/callback",
+    "http://127.0.0.1:8084/callback",
+    "http://localhost:8084/callback",
   ]
 }
 
@@ -376,6 +491,20 @@ variable "enable_identity_interceptor" {
   default     = true
 }
 
+variable "sync_gateway_tools" {
+  description = "Re-sync the gateway target's tool list inside the apply when the MCP runtime image, its version or its tool surface changes (terraform_data.gateway_tool_sync; needs an AWS CLI with bedrock-agentcore-control synchronize-gateway-targets). Set false to run the manual command in docs/DEPLOY.md after apply."
+  type        = bool
+  default     = true
+}
+variable "gateway_sync_settle_seconds" {
+  description = "Seconds to wait before the tool re-sync, so a new MCP runtime version settles behind the DEFAULT endpoint. A heuristic, not a documented AWS figure."
+  type        = number
+  default     = 15
+  validation {
+    condition     = var.gateway_sync_settle_seconds >= 0 && var.gateway_sync_settle_seconds <= 120 && floor(var.gateway_sync_settle_seconds) == var.gateway_sync_settle_seconds
+    error_message = "gateway_sync_settle_seconds must be a whole number from 0 to 120."
+  }
+}
 variable "interceptor_reserved_concurrency" {
   description = "Reserved concurrent executions for the identity interceptor Lambda (checkov CKV_AWS_115). Caps the interceptor's share of account Lambda concurrency so a spike cannot starve other functions; the gateway invokes it once per request, so a small reservation is sufficient. Set -1 to use unreserved (account default)."
   type        = number
@@ -419,4 +548,306 @@ variable "generate_frontdoor_config" {
   description = "When true, Terraform writes populated MCP front-door config files (Kiro + Claude) and a front-door env template into ./generated/ from the deployment outputs, so builders can start using the solution."
   type        = bool
   default     = true
+}
+
+# ---- Network access (private by default; public is a DEMO opt-in) -----------------------
+#
+# network_access = "private" (DEFAULT): both runtimes run in VPC mode in your private subnets
+# (no internet route), and the gateway, the runtimes, the KB bucket, AgentCore Memory and the
+# ECR images accept data requests only through your VPC endpoints (AWS PrivateLink) or a named
+# knowledge-admin principal. A valid JWT presented from the internet is refused by an explicit
+# resource-policy Deny (network.tf, resource_policies.tf, guards.tf).
+#
+# network_access = "public": DEMO ONLY. Today's behaviour: the knowledge plane is reachable
+# from the internet and protected only by the inbound JWT authorizer. Requires the second
+# interlock acknowledge_public_endpoint = true. auth_mode = "none" is refused in public mode.
+
+variable "network_access" {
+  description = "Network exposure of the knowledge plane. 'private' (DEFAULT, recommended): both runtimes run in VPC mode in your private subnets with no internet route, and the gateway, runtimes, KB bucket and Memory accept requests only through your VPC endpoints (AWS PrivateLink); a valid JWT from the internet is designed to be refused (confirm with post-deploy tests 2 and 4a). 'public': DEMO ONLY. WARNING: the gateway and runtime endpoints are reachable from the internet and protected only by the inbound JWT authorizer; anyone holding a valid token can query your proprietary knowledge from anywhere. Requires acknowledge_public_endpoint = true."
+  type        = string
+  default     = "private"
+
+  validation {
+    condition     = contains(["private", "public"], var.network_access)
+    error_message = "network_access must be one of: private, public."
+  }
+}
+
+variable "acknowledge_public_endpoint" {
+  description = "Explicit interlock for network_access='public'. Set true only for a demo in a sandbox account, to confirm you accept an internet-reachable knowledge plane protected only by the JWT authorizer. Ignored in private mode."
+  type        = bool
+  default     = false
+}
+
+variable "create_vpc" {
+  description = "Private mode only. When true, create a minimal private VPC for a one-apply SANDBOX: two private subnets in AgentCore-supported AZs, one route table with only the local route and the S3 gateway endpoint, no internet gateway, no NAT, DNS hostnames/support on. For any real deployment use your own VPC (create_vpc=false + vpc_id/private_subnet_ids/private_route_table_ids)."
+  type        = bool
+  default     = false
+}
+
+variable "vpc_cidr" {
+  description = "CIDR of the sandbox VPC when create_vpc=true. Two /20 private subnets are carved from it."
+  type        = string
+  default     = "10.80.0.0/16"
+
+  validation {
+    # IPv4 only (cidrnetmask rejects IPv6). Every parse sits inside can()/try() because HCL
+    # does not short-circuit && / ||.
+    condition     = can(cidrnetmask(var.vpc_cidr)) && can(tonumber(split("/", var.vpc_cidr)[1])) && try(tonumber(split("/", var.vpc_cidr)[1]) >= 16 && tonumber(split("/", var.vpc_cidr)[1]) <= 24, false)
+    error_message = "vpc_cidr must be an IPv4 CIDR with a prefix between /16 and /24."
+  }
+}
+
+variable "private_subnet_az_ids" {
+  description = "create_vpc only. AZ IDs (for example use1-az1) for the two sandbox subnets. Empty = the first two available AZ IDs that AgentCore Runtime supports in aws_region."
+  type        = list(string)
+  default     = []
+
+  validation {
+    condition     = alltrue([for z in var.private_subnet_az_ids : can(regex("^[a-z0-9]+-az[0-9]+$", z))])
+    error_message = "private_subnet_az_ids entries must be AZ IDs such as use1-az1."
+  }
+}
+
+variable "vpc_id" {
+  description = "Existing VPC for private mode (create_vpc=false). Must have DNS hostnames and DNS resolution enabled (private DNS for endpoints). Prefer a VPC dedicated to the companion: the private-DNS endpoints and the S3 gateway endpoint policy the kit creates affect every workload in the VPC (see existing_interface_endpoint_ids)."
+  type        = string
+  default     = ""
+
+  validation {
+    condition     = var.vpc_id == "" || can(regex("^vpc-[0-9a-f]{8,17}$", var.vpc_id))
+    error_message = "vpc_id must be empty or a VPC id (vpc-...)."
+  }
+}
+
+variable "private_subnet_ids" {
+  description = "Existing private subnets (>= 2, different supported AZs, no route to an internet gateway or NAT recommended) for the runtime ENIs and the interface endpoints."
+  type        = list(string)
+  default     = []
+
+  validation {
+    condition     = alltrue([for s in var.private_subnet_ids : can(regex("^subnet-[0-9a-f]{8,17}$", s))])
+    error_message = "private_subnet_ids entries must be subnet ids (subnet-...)."
+  }
+}
+
+variable "private_route_table_ids" {
+  description = "Route tables that serve private_subnet_ids (checked at plan time), for the S3 gateway endpoint. WARNING: a gateway endpoint changes S3 routing and applies its restrictive endpoint policy to EVERY subnet associated with these route tables, including other workloads; use route tables dedicated to the companion subnets, or supply existing_s3_gateway_endpoint_id."
+  type        = list(string)
+  default     = []
+
+  validation {
+    condition     = alltrue([for r in var.private_route_table_ids : can(regex("^rtb-[0-9a-f]{8,17}$", r))])
+    error_message = "private_route_table_ids entries must be route table ids (rtb-...)."
+  }
+}
+
+variable "private_client_cidrs" {
+  description = "IPv4 source CIDRs of the developer/IDE networks (VPN client pool, on-premises ranges over Site-to-Site VPN or Direct Connect, in-VPC desktops) allowed to reach ONLY the AgentCore gateway and data-plane endpoints on TCP 443. Never 0.0.0.0/0; prefix /8 or longer. Required in private mode unless create_vpc=true (then defaults to vpc_cidr)."
+  type        = list(string)
+  default     = []
+
+  validation {
+    # IPv4 only (the SG rule uses cidr_ipv4; IPv6 such as ::/0 fails cidrnetmask). 0.0.0.0/0,
+    # ::/0 and anything wider than /8 are rejected.
+    condition     = alltrue([for c in var.private_client_cidrs : can(cidrnetmask(c)) && c != "0.0.0.0/0" && c != "::/0" && can(tonumber(split("/", c)[1])) && try(tonumber(split("/", c)[1]) >= 8, false)])
+    error_message = "private_client_cidrs must be IPv4 CIDRs with a prefix of /8 or longer. 0.0.0.0/0 and ::/0 are never allowed."
+  }
+}
+
+variable "bedrock_runtime_client_access" {
+  description = "Private mode only. Also allow private_client_cidrs to reach the bedrock-runtime interface endpoint, for IDE assistants configured to use Amazon Bedrock in this account (for example Claude Code with Bedrock, docs/SECURITY.md 'What private mode does not protect'). Off by default: clients need only the gateway and data-plane endpoints."
+  type        = bool
+  default     = false
+}
+
+variable "existing_s3_gateway_endpoint_id" {
+  description = "Reuse an S3 gateway endpoint already attached to private_route_table_ids instead of creating one (a route table cannot carry two S3 gateway endpoints). Its policy must allow the ECR layer bucket and the KB bucket."
+  type        = string
+  default     = ""
+
+  validation {
+    condition     = var.existing_s3_gateway_endpoint_id == "" || can(regex("^vpce-[0-9a-f]{8,17}$", var.existing_s3_gateway_endpoint_id))
+    error_message = "existing_s3_gateway_endpoint_id must be empty or a VPC endpoint id (vpce-...)."
+  }
+}
+
+variable "existing_interface_endpoint_ids" {
+  description = "Reuse interface endpoints you already run with private DNS (only one endpoint per service per VPC can own the private DNS name). Keys: bedrock-agentcore, bedrock-agentcore.gateway, bedrock-runtime, ecr.api, ecr.dkr, logs, xray, comprehend. The kit does not create those; you must allow TCP 443 from the runtime security group on them. bedrock-agentcore-control is deliberately not an accepted key, so it cannot be wired to the runtimes through this map. SHARED-VPC WARNING: endpoints the kit creates with private DNS take over the regional service name for EVERY workload in the VPC, and the kit's endpoint policies allow only this account's AgentCore resources (bedrock-agentcore) and this account's principals (bedrock-runtime, comprehend). Other workloads in the VPC that call other accounts' AgentCore resources, or principals from other accounts in RAM-shared subnets, are then denied. Use a dedicated companion VPC, or reuse your central endpoints here."
+  type        = map(string)
+  default     = {}
+
+  validation {
+    condition     = alltrue([for k in keys(var.existing_interface_endpoint_ids) : contains(["bedrock-agentcore", "bedrock-agentcore.gateway", "bedrock-runtime", "ecr.api", "ecr.dkr", "logs", "xray", "comprehend"], k)])
+    error_message = "existing_interface_endpoint_ids keys must be one of: bedrock-agentcore, bedrock-agentcore.gateway, bedrock-runtime, ecr.api, ecr.dkr, logs, xray, comprehend."
+  }
+
+  validation {
+    condition     = alltrue([for v in values(var.existing_interface_endpoint_ids) : can(regex("^vpce-[0-9a-f]{8,17}$", v))])
+    error_message = "existing_interface_endpoint_ids values must be VPC endpoint ids (vpce-...)."
+  }
+}
+
+variable "existing_endpoint_security_group_ids" {
+  description = "Security groups of reused interface endpoints; the runtime SG gets HTTPS egress to every member of them. They must not front a bedrock-agentcore-control endpoint (or any endpoint the runtimes do not need): the runtime SG can reach everything behind these groups. If your central endpoints share one SG, create a dedicated SG for the reused endpoints the companion needs. Private mode also denies boundary-changing control-plane actions to the runtime role (DenyBoundarySelfModification), so this is defence in depth, not the only control."
+  type        = list(string)
+  default     = []
+
+  validation {
+    condition     = alltrue([for s in var.existing_endpoint_security_group_ids : can(regex("^sg-[0-9a-f]{8,17}$", s))])
+    error_message = "existing_endpoint_security_group_ids entries must be security group ids (sg-...)."
+  }
+}
+
+variable "existing_client_endpoint_security_group_ids" {
+  description = "The subset of existing_endpoint_security_group_ids that fronts the reused bedrock-agentcore and bedrock-agentcore.gateway endpoints. Used only by the private access probe, so the probe never gets a rule on a runtime-only endpoint SG. Every entry must also be in existing_endpoint_security_group_ids (guards.tf). From the platform output of the same name."
+  type        = list(string)
+  default     = []
+
+  validation {
+    condition     = alltrue([for s in var.existing_client_endpoint_security_group_ids : can(regex("^sg-[0-9a-f]{8,17}$", s))])
+    error_message = "existing_client_endpoint_security_group_ids entries must be security group ids (sg-...)."
+  }
+}
+
+variable "additional_dataplane_vpce_ids" {
+  description = "Extra AgentCore data-plane endpoint IDs (for example in a shared hub VPC) allowed to invoke the orchestrator runtime and Memory."
+  type        = list(string)
+  default     = []
+
+  validation {
+    condition     = alltrue([for v in var.additional_dataplane_vpce_ids : can(regex("^vpce-[0-9a-f]{8,17}$", v))])
+    error_message = "additional_dataplane_vpce_ids entries must be VPC endpoint ids (vpce-...)."
+  }
+}
+
+variable "additional_gateway_vpce_ids" {
+  description = "Extra AgentCore Gateway endpoint IDs allowed to invoke the gateway."
+  type        = list(string)
+  default     = []
+
+  validation {
+    condition     = alltrue([for v in var.additional_gateway_vpce_ids : can(regex("^vpce-[0-9a-f]{8,17}$", v))])
+    error_message = "additional_gateway_vpce_ids entries must be VPC endpoint ids (vpce-...)."
+  }
+}
+
+variable "enable_bedrock_runtime_endpoint" {
+  description = "Create the bedrock-runtime interface endpoint (model reasoning and Bedrock Guardrails stay on PrivateLink). Disable only if no Bedrock call is made."
+  type        = bool
+  default     = true
+}
+
+variable "enable_xray_endpoint" {
+  description = "Create the X-Ray interface endpoint used by the ADOT tracer in both images."
+  type        = bool
+  default     = true
+}
+
+variable "extra_interface_endpoint_services" {
+  description = "Extra interface endpoints by short service name (for example sts, monitoring) if post-deploy tests show a service the runtimes need. Default policy (full access) applies. bedrock-agentcore-control is rejected (docs/SECURITY.md SD-21)."
+  type        = list(string)
+  default     = []
+
+  validation {
+    condition     = alltrue([for s in var.extra_interface_endpoint_services : can(regex("^[a-z0-9.-]+$", s))])
+    error_message = "extra_interface_endpoint_services entries must be short service names such as sts or monitoring."
+  }
+
+  validation {
+    condition     = alltrue([for s in var.extra_interface_endpoint_services : !contains(["bedrock-agentcore", "bedrock-agentcore.gateway", "bedrock-runtime", "ecr.api", "ecr.dkr", "logs", "xray", "comprehend"], s)])
+    error_message = "extra_interface_endpoint_services must not repeat an endpoint the kit already manages (bedrock-agentcore, bedrock-agentcore.gateway, bedrock-runtime, ecr.api, ecr.dkr, logs, xray, comprehend)."
+  }
+
+  validation {
+    # Fail closed on the control plane (substring match also catches the full service name and
+    # any -fips variant).
+    condition     = alltrue([for s in var.extra_interface_endpoint_services : !can(regex("bedrock-agentcore-control", s))])
+    error_message = "bedrock-agentcore-control must not be reachable from the companion runtimes: it would let runtime code change the resource policies and network mode that form the private boundary (docs/SECURITY.md SD-21)."
+  }
+}
+
+variable "ecr_pull_restriction" {
+  description = "Private mode: deny ECR image pulls that do not come through the ecr endpoints or an exempt principal. Disable only if post-deploy test 13b fails; then any account principal with ECR pull rights can pull the knowledge-bearing images from the internet."
+  type        = bool
+  default     = true
+}
+
+variable "dataplane_endpoint_extra_actions" {
+  description = "Private mode only. Extra bedrock-agentcore actions to allow through the kit's AgentCore data-plane endpoint, beyond the default list (InvokeAgentRuntime, the workload-token and credential-provider token actions, and the Memory data-plane actions when enable_memory=true). Add one only when post-deploy test 8 shows an AccessDenied that names the VPC endpoint policy."
+  type        = list(string)
+  default     = []
+
+  validation {
+    condition     = alltrue([for a in var.dataplane_endpoint_extra_actions : can(regex("^bedrock-agentcore:[A-Za-z]+$", a))])
+    error_message = "dataplane_endpoint_extra_actions entries must be single bedrock-agentcore:<Action> names (no wildcards, no other service)."
+  }
+}
+
+variable "knowledge_admin_principal_arns" {
+  description = "Private mode, REQUIRED (non-empty). Every IAM role/user that reads or writes knowledge from OUTSIDE the VPC: each principal that runs terraform (refresh reads the KB bucket and the seed object), each CI role that builds and pushes images, and each curator who promotes the Tier-B overlay. These principals are exempt from the KB bucket and ECR repository VPC-endpoint-only denies; nobody else in the account can read the bucket or pull the images from the internet. The current terraform runner is auto-exempted as a safety net, with a plan warning if it is not listed."
+  type        = list(string)
+  default     = []
+
+  validation {
+    # IAM role/user ARN; * and ? globs allowed (evaluated with ArnLike/ArnNotLike), for example
+    # an SSO permission-set role arn:aws:iam::<account-id>:role/aws-reserved/sso.amazonaws.com/*/AWSReservedSSO_<set>_*.
+    condition     = alltrue([for a in var.knowledge_admin_principal_arns : can(regex("^arn:aws[a-z-]*:iam::[0-9]{12}:(role|user)/[A-Za-z0-9+=,.@_/*?-]+$", a))])
+    error_message = "knowledge_admin_principal_arns entries must be IAM role or user ARNs (arn:aws:iam::<account-id>:role/<name> or :user/<name>); * and ? globs are allowed."
+  }
+
+  validation {
+    condition     = alltrue([for a in var.knowledge_admin_principal_arns : can(regex("^arn:aws[a-z-]*:iam::[0-9]{12}:(role|user)/[^*?]{3,}", a))])
+    error_message = "A knowledge-admin ARN must name a specific role/user or a narrow pattern, not role/* (at least 3 literal characters after role/ or user/ before any wildcard)."
+  }
+}
+
+variable "trace_tool_content" {
+  description = "Private mode only. When false (default), the ADOT MCP instrumentation (aws_mcp) is disabled so tool-call arguments and results are not written to X-Ray/CloudWatch spans, which are readable through IAM from any network. Set true only if you accept tool content in traces and restrict trace read access."
+  type        = bool
+  default     = false
+}
+
+# ---- Shared network and on-premises DNS (private mode) ------------------------------------
+
+variable "manage_existing_endpoint_ingress" {
+  description = "Private mode, existing VPC. When true, add an ingress rule (TCP 443 from this companion's runtime SG) to every existing_endpoint_security_group_ids entry. Set true when consuming the platform stack's shared network; needs ec2:AuthorizeSecurityGroupIngress on those SGs. Default false leaves operator-managed central endpoint SGs untouched (you add the rule yourself)."
+  type        = bool
+  default     = false
+}
+
+variable "enable_resolver_inbound_endpoint" {
+  description = "Private mode only. Create a Route 53 Resolver inbound endpoint so DNS forwarders on Direct Connect / VPN networks can resolve the endpoints' private DNS names (output resolver_inbound_ip_addresses). Off by default. It costs per IP-hour and per query (docs/COST.md), and it answers ANY DNS name the VPC can resolve for the approved CIDRs (docs/SECURITY.md SD-26). Its security group cannot be changed after creation."
+  type        = bool
+  default     = false
+}
+
+variable "resolver_inbound_client_cidrs" {
+  description = "IPv4 CIDRs of the on-premises DNS forwarders allowed to query the Resolver inbound endpoint (TCP/UDP 53). Empty = the effective private_client_cidrs. Never an all-addresses CIDR; prefix /8 or longer."
+  type        = list(string)
+  default     = []
+
+  validation {
+    condition     = alltrue([for c in var.resolver_inbound_client_cidrs : can(cidrnetmask(c)) && c != "0.0.0.0/0" && c != "::/0" && can(tonumber(split("/", c)[1])) && try(tonumber(split("/", c)[1]) >= 8, false)])
+    error_message = "resolver_inbound_client_cidrs must be IPv4 CIDRs with a prefix of /8 or longer. 0.0.0.0/0 and ::/0 are never allowed."
+  }
+}
+
+# ---- Private access probe (TEST STAND-IN, opt-in) -----------------------------------------
+
+variable "enable_private_access_probe" {
+  description = "Deploy the private access probe: a small Python Lambda function in the private subnets that stands in for a builder workstation on Direct Connect / VPN, and checks DNS, the gateway /mcp route and (optionally) the orchestrator runtime with a token you pass at invoke time (never stored, logged or returned). Private mode with deploy_gateway=true only. A TEST STAND-IN: disable it after testing (docs/DEPLOY.md)."
+  type        = bool
+  default     = false
+}
+
+variable "private_access_probe_reserved_concurrency" {
+  description = "Reserved concurrent executions for the probe (default 1). -1 = unreserved (use when the account's unreserved concurrency would drop below the 100-unit minimum)."
+  type        = number
+  default     = 1
+
+  validation {
+    condition     = var.private_access_probe_reserved_concurrency == -1 || (var.private_access_probe_reserved_concurrency >= 1 && var.private_access_probe_reserved_concurrency <= 5)
+    error_message = "private_access_probe_reserved_concurrency must be -1 (unreserved) or between 1 and 5."
+  }
 }

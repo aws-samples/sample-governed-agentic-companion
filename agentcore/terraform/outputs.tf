@@ -26,7 +26,7 @@ output "mcp_runtime_image_uri" {
 }
 
 output "kb_bucket_name" {
-  description = "S3 bucket backing the hybrid knowledge base (self-learning store + Tier-B overlay)."
+  description = "S3 bucket backing the hybrid knowledge base (Tier-B overlay; the kb/ prefix is reserved for a fork's own knowledge tier)."
   value       = aws_s3_bucket.kb.bucket
 }
 
@@ -91,13 +91,18 @@ output "cognito_frontdoor_client_id" {
 }
 
 output "cognito_m2m_client_id" {
-  description = "Cognito M2M (client_credentials) client id for the gateway outbound hop (empty unless auth_mode=cognito)."
-  value       = local.auth_is_cognito ? one(aws_cognito_user_pool_client.m2m[*].id) : ""
+  description = "Cognito M2M (client_credentials) client id for the gateway outbound hop (empty unless auth_mode=cognito). Empty in private mode, where the gateway uses SigV4."
+  value       = local.auth_is_cognito ? try(aws_cognito_user_pool_client.m2m[0].id, "") : ""
 }
 
 output "cognito_oauth_frontdoor_client_id" {
   description = "PKCE PUBLIC client id for the Kiro/Claude IDE OAuth path (auto-refreshing). Empty unless auth_mode=cognito + enable_oauth_frontdoor_client. Use in the Kiro mcp.json oauth.clientId."
   value       = (local.auth_is_cognito && var.enable_oauth_frontdoor_client) ? one(aws_cognito_user_pool_client.oauth_frontdoor[*].id) : ""
+}
+
+output "cognito_oauth_scope" {
+  description = "OAuth scope a front-door token carries for this companion (<engine_resource_server_identifier>/invoke). Empty unless auth_mode=cognito."
+  value       = local.auth_is_cognito ? "${local.m2m_resource_server}/${local.m2m_scope_name}" : ""
 }
 
 output "cognito_hosted_ui_domain" {
@@ -106,8 +111,116 @@ output "cognito_hosted_ui_domain" {
 }
 
 output "gateway_url" {
-  description = "AgentCore Gateway URL (empty unless deploy_gateway=true). Set as GAC_GATEWAY_URL in the front door."
+  description = "AgentCore Gateway URL (empty unless deploy_gateway=true). Set as GAC_GATEWAY_URL in the front door. Private mode: the name resolves to the gateway endpoint's private IPs only inside VPCs/networks using its private DNS; requests that do not arrive through the endpoint are denied."
   value       = local.gateway_url
+}
+
+# ---- Network access ----------------------------------------------------------------------
+# Every value below is empty or null in public mode. None is a secret.
+
+locals {
+  gateway_vpce_dns_names   = lookup(local.module_endpoint_dns_names, "bedrock-agentcore.gateway", [])
+  dataplane_vpce_dns_names = lookup(local.module_endpoint_dns_names, "bedrock-agentcore", [])
+  # Only works from inside an approved network. The token is exported separately and is never
+  # interpolated here.
+  private_access_test_command = local.network_private ? "curl -sS -o /dev/null -w '%%{http_code}\\n' -X POST \"$GAC_GATEWAY_URL\" -H \"Authorization: Bearer $GAC_GATEWAY_TOKEN\" -H 'Content-Type: application/json' -H 'Accept: application/json, text/event-stream' -d '{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\",\"params\":{\"protocolVersion\":\"2025-06-18\",\"capabilities\":{},\"clientInfo\":{\"name\":\"probe\",\"version\":\"0\"}}}'" : ""
+}
+
+output "network_access" {
+  description = "Network exposure in effect: private (default; VPC endpoints only) or public (demo opt-in)."
+  value       = var.network_access
+}
+
+output "vpc_id" {
+  description = "VPC the runtimes and endpoints use (empty in public mode)."
+  value       = local.network_private ? local.vpc_id_effective : ""
+}
+
+output "private_subnet_ids" {
+  description = "Private subnets for the runtime ENIs and the interface endpoints (empty in public mode)."
+  value       = local.network_private ? local.private_subnet_ids_effective : []
+}
+
+output "runtime_security_group_id" {
+  description = "Security group on the runtime ENIs (HTTPS egress to the endpoints only). Empty in public mode."
+  value       = try(aws_security_group.runtime[0].id, "")
+}
+
+output "endpoint_client_security_group_id" {
+  description = "Security group on the AgentCore gateway/data-plane endpoints (runtime SG + private_client_cidrs). Empty in public mode or when those endpoints are reused."
+  value       = lookup(local.vpce_sg_ids, "client", "")
+}
+
+output "endpoint_runtime_security_group_id" {
+  description = "Security group on the runtime-only endpoints (runtime SG only). Empty in public mode."
+  value       = lookup(local.vpce_sg_ids, "runtime", "")
+}
+
+output "vpc_endpoint_ids" {
+  description = "Interface endpoint ids by service key (created plus reused). Empty in public mode."
+  value       = local.network_private ? local.vpce_id : {}
+}
+
+output "gateway_vpce_id" {
+  description = "AgentCore Gateway interface endpoint id (empty in public mode or without a gateway)."
+  value       = try(local.vpce_id["bedrock-agentcore.gateway"], "")
+}
+
+output "gateway_vpce_dns_names" {
+  description = "DNS names of the kit-managed gateway endpoint (regional and zonal). Empty in public mode."
+  value       = local.gateway_vpce_dns_names
+}
+
+output "agentcore_dataplane_vpce_id" {
+  description = "AgentCore data-plane interface endpoint id (empty in public mode)."
+  value       = try(local.vpce_id["bedrock-agentcore"], "")
+}
+
+output "agentcore_dataplane_vpce_dns_names" {
+  description = "DNS names of the kit-managed data-plane endpoint (for GAC_AGENTCORE_ENDPOINT on networks without private DNS). Empty in public mode."
+  value       = local.dataplane_vpce_dns_names
+}
+
+output "s3_gateway_endpoint_id" {
+  description = "S3 gateway endpoint id (created or reused). Null in public mode."
+  value       = local.network_private ? local.s3_gateway_vpce_id : null
+}
+
+output "orchestrator_require_service_s3_endpoint" {
+  description = "Computed by AgentCore for the orchestrator's VPC config; expected false (the customer S3 gateway endpoint is used). Null in public mode."
+  value       = try(aws_bedrockagentcore_agent_runtime.orchestrator.network_configuration[0].network_mode_config[0].require_service_s3_endpoint, null)
+}
+
+output "mcp_runtime_require_service_s3_endpoint" {
+  description = "Computed by AgentCore for the MCP runtime's VPC config; expected false. Null in public mode."
+  value       = try(aws_bedrockagentcore_agent_runtime.mcp_runtime.network_configuration[0].network_mode_config[0].require_service_s3_endpoint, null)
+}
+
+output "kb_kms_key_arn" {
+  description = "ARN of the KB bucket's KMS key. A curator's identity policy needs kms:Decrypt, kms:Encrypt, kms:GenerateDataKey* and kms:DescribeKey on it (docs/DEPLOY.md). Not a secret."
+  value       = aws_kms_key.kb.arn
+}
+
+output "resolver_inbound_ip_addresses" {
+  description = "IP addresses of the Route 53 Resolver inbound endpoint (targets for on-premises conditional forwarders of bedrock-agentcore.<region>.amazonaws.com). Empty unless enable_resolver_inbound_endpoint=true."
+  value       = local.network_private ? module.private_network[0].resolver_inbound_ip_addresses : []
+}
+
+output "private_access_test_command" {
+  description = "Probe for docs/DEPLOY.md post-deploy tests 2 and 3: export GAC_GATEWAY_URL and GAC_GATEWAY_TOKEN, then run it. Expect 200 inside an approved network and 403 outside. Empty in public mode."
+  value       = local.private_access_test_command
+}
+
+# ---- Private access probe (TEST STAND-IN; empty when disabled) -----------------------------
+
+output "private_access_probe_function_name" {
+  description = "Name of the private access probe Lambda function (empty unless enable_private_access_probe=true). A test stand-in for a DX/VPN workstation; disable it after testing."
+  value       = local.probe_enabled ? aws_lambda_function.private_access_probe[0].function_name : ""
+}
+
+output "private_access_probe_invoke_command" {
+  description = "Command that invokes the probe. Prerequisites: AWS CLI v2, jq, and GAC_GATEWAY_TOKEN exported in the current shell (a front-door access token). The token is read by jq from the environment, never interpolated here. Empty unless enable_private_access_probe=true."
+  value       = local.private_access_probe_invoke_command
 }
 
 output "frontdoor_config_dir" {

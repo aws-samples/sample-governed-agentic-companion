@@ -1,0 +1,16 @@
+# Remote state for the PLATFORM stack itself. Two-phase bootstrap, run by a HUMAN:
+#
+#   1. First apply with LOCAL state (no backend.tf): the bucket does not exist yet.
+#   2. Copy this file to backend.tf (gitignored), set the bucket from the state_bucket output,
+#      then run `terraform init -migrate-state` to move the local state into the bucket.
+#
+# The platform has its own key; each companion uses companions/<name>/terraform.tfstate.
+terraform {
+  backend "s3" {
+    bucket       = "companion-tfstate-<ACCOUNT_ID>-<REGION>" # platform output state_bucket
+    key          = "platform/terraform.tfstate"
+    region       = "<REGION>"
+    use_lockfile = true # S3 native state locking
+    encrypt      = true
+  }
+}

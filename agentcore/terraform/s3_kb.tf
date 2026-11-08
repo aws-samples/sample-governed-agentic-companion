@@ -1,12 +1,20 @@
 # S3 bucket backing the hybrid knowledge base:
-#   - self-learning KB store under prefix  kb/                       (var.kb_prefix)
+#   - KB store prefix kb/, reserved for a fork's own knowledge tier  (var.kb_prefix)
 #   - curated Tier-B overlay object        kb/curated/overlay.json   (var.kb_overlay_key)
 #
 # Tier-A locked constraints stay baked into the image and are NEVER in this bucket — the
 # overlay cannot touch them. The bucket is private, encrypted, and versioned.
+# KICS "IAM Access Analyzer Not Enabled" (K8) fires once per file with any aws_ resource and no
+# analyzer. The analyzer is an account or organization baseline control that a landing zone
+# normally owns; this kit makes it opt-in (enable_access_analyzer, access_analyzer.tf;
+# docs/SECURITY.md SD-8), so the per-file query does not apply to this file.
+# KICS "S3 Bucket Policy Accepts HTTP Requests" (K4) cannot evaluate a jsonencode() bucket
+# policy whose Condition values are Terraform references (the same policy with literal values
+# passes). Every bucket policy in this file has DenyInsecureTransport (Deny s3:* when
+# aws:SecureTransport is "false"), asserted by the static tests. Only that query is dropped;
+# every other KICS bucket-policy query still runs on these policies.
+# kics-scan disable=e592a0c5-5bdb-414c-9066-5dba7cdea370,4bc4dd4c-7d8d-405e-a0fb-57fa4c31b4d9
 
-# kics-scan ignore-line: "IAM Access Analyzer Not Enabled" is an account/org baseline control
-# made opt-in here via enable_access_analyzer (access_analyzer.tf) — docs/SECURITY.md SD-8.
 resource "aws_s3_bucket" "kb" {
   # checkov:skip=CKV_AWS_144: cross-region replication is disproportionate for a small,
   #   single-region KB in a starter kit; the bucket is versioned + CMK-encrypted. A fork with a
@@ -52,7 +60,7 @@ resource "aws_kms_key" "kb" {
   enable_key_rotation     = true
   policy = jsonencode({
     Version = "2012-10-17"
-    Statement = [
+    Statement = concat([
       {
         Sid       = "KeyAdministration"
         Effect    = "Allow"
@@ -79,7 +87,27 @@ resource "aws_kms_key" "kb" {
         Action    = ["kms:Encrypt", "kms:Decrypt", "kms:GenerateDataKey*", "kms:DescribeKey"]
         Resource  = "*"
       },
-    ]
+      ],
+      # Private mode only (public mode renders exactly the three statements above):
+      # KnowledgeAdminS3Use lets the listed knowledge admins (terraform runners, CI, curators)
+      # use the key THROUGH S3 only. The account-root principal delegates to IAM (key-policy
+      # principals cannot hold the admin globs), restricted by ArnLike aws:PrincipalArn and
+      # kms:ViaService. A listed admin also needs an identity policy allowing these actions on
+      # the key (docs/DEPLOY.md). In a key policy Resource "*" means this key.
+      # https://docs.aws.amazon.com/kms/latest/developerguide/key-policy-default.html
+      # https://docs.aws.amazon.com/kms/latest/developerguide/conditions-kms.html
+      [for _ in range(local.network_private ? 1 : 0) : {
+        Sid       = "KnowledgeAdminS3Use"
+        Effect    = "Allow"
+        Principal = { AWS = "arn:aws:iam::${local.account_id}:root" }
+        Action    = ["kms:Decrypt", "kms:Encrypt", "kms:GenerateDataKey*", "kms:DescribeKey"]
+        Resource  = "*"
+        Condition = {
+          ArnLike      = { "aws:PrincipalArn" = local.knowledge_admin_arns_effective }
+          StringEquals = { "kms:ViaService" = "s3.${local.region}.amazonaws.com" }
+        }
+      }],
+    )
   })
 }
 
@@ -101,11 +129,23 @@ resource "aws_s3_bucket_server_side_encryption_configuration" "kb" {
 
 # HTTPS-only bucket policy (kics "S3 Bucket Policy Accepts HTTP Requests"): deny any request
 # not made over TLS. Belt-and-braces with the public-access block.
+#
+# Private mode adds DenyDataAccessNotViaS3Endpoint: object/list data actions are denied unless
+# the request arrives through the companion's S3 gateway endpoint, comes from a listed knowledge
+# admin (terraform runners, CI, curators; local.knowledge_admin_arns_effective), or is an AWS
+# service principal. Documented exceptions: docs/DEPLOY.md and docs/SECURITY.md SD-20.
+# Bucket-MANAGEMENT actions (Get/PutBucketPolicy, public access block, versioning, ...) are
+# deliberately never denied, so a wrong endpoint id cannot lock admins out of fixing the policy.
+# https://docs.aws.amazon.com/AmazonS3/latest/userguide/example-bucket-policies-vpc-endpoint.html
+# Public mode renders exactly the single DenyInsecureTransport statement (today's policy).
+# A Deny with Principal "*" is not a public grant; Block Public Access stays fully on.
 resource "aws_s3_bucket_policy" "kb" {
   bucket = aws_s3_bucket.kb.id
+  # K4 (file-header disable, query 4bc4dd4c only): this policy denies s3:* when
+  # aws:SecureTransport is "false" (statement DenyInsecureTransport; tests/test_terraform_private_mode_static.py).
   policy = jsonencode({
     Version = "2012-10-17"
-    Statement = [{
+    Statement = concat([{
       Sid       = "DenyInsecureTransport"
       Effect    = "Deny"
       Principal = "*"
@@ -115,7 +155,26 @@ resource "aws_s3_bucket_policy" "kb" {
         "${aws_s3_bucket.kb.arn}/*",
       ]
       Condition = { Bool = { "aws:SecureTransport" = "false" } }
-    }]
+      }],
+      [for _ in range(local.network_private ? 1 : 0) : {
+        Sid       = "DenyDataAccessNotViaS3Endpoint"
+        Effect    = "Deny"
+        Principal = "*"
+        Action = [
+          "s3:GetObject", "s3:GetObjectVersion", "s3:PutObject", "s3:DeleteObject",
+          "s3:DeleteObjectVersion", "s3:ListBucket", "s3:ListBucketVersions", "s3:RestoreObject",
+        ]
+        Resource = [
+          aws_s3_bucket.kb.arn,
+          "${aws_s3_bucket.kb.arn}/*",
+        ]
+        Condition = {
+          StringNotEquals = { "aws:SourceVpce" = local.s3_gateway_vpce_id }
+          ArnNotLike      = { "aws:PrincipalArn" = local.knowledge_admin_arns_effective }
+          BoolIfExists    = { "aws:PrincipalIsAWSService" = "false" }
+        }
+      }],
+    )
   })
 }
 
@@ -216,6 +275,8 @@ resource "aws_s3_bucket_lifecycle_configuration" "kb_logs" {
 # policy grant scoped to this source bucket + account, rather than the legacy log-delivery ACL.
 resource "aws_s3_bucket_policy" "kb_logs" {
   bucket = aws_s3_bucket.kb_logs.id
+  # K4 (file-header disable, query 4bc4dd4c only): this policy denies s3:* when
+  # aws:SecureTransport is "false" (statement DenyInsecureTransport; tests/test_terraform_private_mode_static.py).
   policy = jsonencode({
     Version = "2012-10-17"
     Statement = [

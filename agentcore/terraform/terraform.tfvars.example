@@ -73,9 +73,9 @@ cognito_mfa_mode               = "OPTIONAL"  # OPTIONAL (default; TOTP available
 # existing_user_pool_id = "<platform output: shared_user_pool_id>"
 # existing_oidc_issuer  = "https://cognito-idp.<region>.amazonaws.com/<shared pool id>"
 #   existing_frontdoor_client_ids / existing_m2m_client_id / existing_oauth_frontdoor_client_id
-#   are for the RARE pre-created-client case; normally leave empty (this fork makes its own).
-#   The platform stack that owns the shared pool is a separate stack you provide; see AGENTS.md
-#   ("Shared-identity consume path").
+#   are for the RARE pre-created-client case; normally leave empty (this companion makes its own).
+#   See platform/README.md and modules/shared-identity/README.md.
+# engine_resource_server_identifier = "gac-engine"   # unique per companion in a shared pool
 
 # (B) Microsoft Entra ID — use an existing tenant (Terraform creates no IdP)
 # auth_mode                    = "entraid"
@@ -89,7 +89,8 @@ cognito_mfa_mode               = "OPTIONAL"  # OPTIONAL (default; TOTP available
 
 # ---- Gateway ----
 # Target topology: front door -> AgentCore Gateway (validates JWT) -> mcp_runtime.
-# Requires auth_mode cognito|entraid.
+# Requires auth_mode cognito|entraid. Set true for the gateway front door, for post-deploy
+# tests 2, 3, 5 and 16 (docs/DEPLOY.md), and for the private access probe.
 deploy_gateway = false
 
 # Gateway error verbosity. Empty ("") is the production default (redacted errors). Set "DEBUG"
@@ -119,8 +120,83 @@ enable_access_analyzer = false
 # its own managed Token Vault) — the kit does NOT create a hand-managed Secrets Manager copy.
 # BYO override only (rare): a fork wanting a readable copy on a NON-gateway path can point at an
 # existing secret it manages elsewhere (e.g. an Entra client-credentials secret):
-# gateway_m2m_secret_arn = "arn:aws:secretsmanager:<region>:<account>:secret:<name>"
+# gateway_m2m_secret_arn = "arn:aws:secretsmanager:<region>:<account>:secret:<name>"  # pragma: allowlist secret
 
 # ---- Build + front-door config ----
 auto_build_push_images    = true
 generate_frontdoor_config = true
+
+# ---- Network access (private by default) ----------------------------------------------
+# private (DEFAULT): both runtimes run in VPC mode in your private subnets (no internet route);
+# the gateway, runtimes, KB bucket, Memory and ECR images accept requests only through your VPC
+# endpoints (AWS PrivateLink) or a listed knowledge admin. See docs/DEPLOY.md (prerequisites +
+# post-deploy tests) and docs/FRONT-DOORS.md (how IDEs connect).
+network_access = "private"
+
+# Your own VPC (recommended: a VPC and route tables dedicated to the companion). The VPC needs
+# DNS hostnames + DNS resolution enabled; >= 2 subnets in AgentCore-supported AZs.
+create_vpc              = false
+vpc_id                  = "vpc-<id>"
+private_subnet_ids      = ["subnet-<id-a>", "subnet-<id-b>"]
+private_route_table_ids = ["rtb-<id>"]
+# Sandbox only: set create_vpc = true instead of the three lines above (2 private subnets, no
+# internet gateway, no NAT). private_client_cidrs then defaults to vpc_cidr.
+# create_vpc = true
+# vpc_cidr   = "10.80.0.0/16"
+
+# IDE / developer networks (VPN client pool, on-premises ranges, in-VPC desktops). They reach ONLY
+# the gateway and AgentCore data-plane endpoints on TCP 443. Narrow this to your real ranges;
+# /0 and anything wider than /8 are rejected. With create_vpc = true you may remove the line so
+# it defaults to vpc_cidr.
+private_client_cidrs = ["10.0.0.0/16"] # PLACEHOLDER: your VPN client pool / Direct Connect ranges
+
+# REQUIRED in private mode: every principal that runs terraform, every CI role that pushes images,
+# and every curator who promotes the Tier-B overlay. Specific roles or narrow patterns only.
+knowledge_admin_principal_arns = ["arn:aws:iam::<account-id>:role/<deployer-role>"]
+
+# Optional (defaults shown):
+# bedrock_runtime_client_access = false   # let client CIDRs reach bedrock-runtime (IDE on Bedrock)
+# ecr_pull_restriction          = true    # deny image pulls outside the ecr endpoints
+# trace_tool_content            = false   # false keeps tool arguments/results out of traces
+# existing_s3_gateway_endpoint_id      = "vpce-<id>"                    # reuse an S3 gateway endpoint
+# existing_interface_endpoint_ids      = { "bedrock-agentcore" = "vpce-<id>" }  # reuse endpoints
+# existing_endpoint_security_group_ids = ["sg-<id>"]
+# extra_interface_endpoint_services    = ["sts"]                        # never bedrock-agentcore-control
+
+# Optional private-mode extras (defaults shown):
+# enable_resolver_inbound_endpoint            = false  # DNS forwarders on DX/VPN resolve the endpoints
+# resolver_inbound_client_cidrs               = []     # empty = the effective private_client_cidrs
+# enable_private_access_probe                 = false  # test stand-in; set back to false after testing
+# private_access_probe_reserved_concurrency   = 1
+# manage_existing_endpoint_ingress            = false  # add runtime SG ingress on reused endpoint SGs
+# existing_client_endpoint_security_group_ids = []
+# additional_dataplane_vpce_ids               = []
+# additional_gateway_vpce_ids                 = []
+
+# ---- PUBLIC opt-in (DEMO ONLY) ----
+# WARNING: public mode makes the gateway and runtimes reachable from the internet, protected only
+# by the JWT authorizer: anyone holding a valid token can query your proprietary knowledge from
+# anywhere. Use only in a sandbox account. auth_mode = "none" is refused in public mode.
+# network_access              = "public"
+# acknowledge_public_endpoint = true
+
+# ---- Diagram specialist ---------------------------------------------------------------------
+# Stage the AWS Architecture Icons Asset Package zip in agentcore/diagram-icons/ (docs/DEPLOY.md,
+# "Stage the AWS Architecture Icons") and set a NEW image_tag before the next apply.
+# diagram_icons_sha256 = "<sha256-hex>"   # optional: the build fails if the staged zip differs
+# diagram_enabled      = true             # false: the specialist stays registered and declines
+# Opt-in Bedrock planner (selects knowledge-base facts only; needs a guardrail and, in private
+# mode, the bedrock-runtime endpoint). The model must support Converse tool use.
+# diagram_planner               = "deterministic"           # or "bedrock"
+# diagram_planner_model_id      = "<inference-profile-id>"
+# diagram_planner_model_regions = ["<region>"]              # cross-Region inference profile only
+# Gateway tool re-sync after an MCP runtime change (needs a current AWS CLI):
+# sync_gateway_tools          = true
+# gateway_sync_settle_seconds = 15
+# ---- Entitlement group ----------------------------------------------------------------------
+# Only users in the group reach the companion (gateway, orchestrator, interceptor re-check).
+# require_entitlement_group      = true               # false is refused in public mode
+# entitlement_group_name         = ""                 # empty = "<name_prefix>-users"
+# manage_entitlement_group       = null               # null follows manage_identity_pool
+# check_entitlement_group_exists = true               # consume path: the group must exist
+# entitlement_claim_name         = "cognito:groups"   # entraid: "groups" or "roles"
