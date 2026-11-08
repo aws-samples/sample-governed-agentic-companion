@@ -1,0 +1,46 @@
+# Diagram facts (security, example): identity, the interceptor and the private-mode denies.
+# Each fact names the Terraform file it was verified against (ref). Arrows follow the data.
+# Amazon Cognito exists only for auth_mode = "cognito" (the default) and the identity interceptor
+# only with the opt-in gateway, so both are drawn as optional (dashed outline, dashed hops).
+# Aliases and tags are retrieval metadata for the natural-language planner (never drawn).
+# Generic, customer-agnostic content only.
+summary: "Example diagram facts: auth and policy edges of the kit's private default."
+diagram_facts:
+  - {kind: node, id: cognito, label: "Amazon Cognito", icon: AmazonCognito, group: region,
+     optional: true, row: 0, aliases: [cognito, sign in], tags: [identity, security],
+     topics: [private-request-path, gateway-to-runtimes],
+     ref: "agentcore/terraform/cognito.tf"}
+  - {kind: node, id: identity-interceptor, label: "Identity interceptor", icon: AWSLambda,
+     group: region, optional: true, col: 4, aliases: [interceptor],
+     tags: [identity, security], topics: [gateway-to-runtimes],
+     ref: "agentcore/terraform/interceptor.tf"}
+  - {kind: node, id: outside-caller, label: "Outside caller", icon: Client, tags: [external],
+     topics: [private-request-path, gateway-to-runtimes],
+     ref: "agentcore/terraform/resource_policies.tf"}
+  # An IAM principal (Terraform runner, CI, curator), not a host on your network (s3_kb.tf).
+  - {kind: node, id: knowledge-admin, label: "Knowledge admin (IAM)", icon: User,
+     aliases: [admin], tags: [user],
+     topics: [kb-ingestion], ref: "agentcore/terraform/s3_kb.tf"}
+  - {kind: node, id: kb-kms-key, label: "KB KMS key", icon: AWSKeyManagementService,
+     group: region, col: 1, row: 1, aliases: [kms, key], tags: [encryption, security],
+     topics: [kb-ingestion], ref: "agentcore/terraform/s3_kb.tf"}
+  - {kind: edge, id: ide-sign-in, from: builder-ide, to: cognito, label: "sign in",
+     optional: true, tags: [identity], topics: [private-request-path, gateway-to-runtimes],
+     ref: "agentcore/terraform/cognito.tf"}
+  - {kind: edge, id: cognito-to-orchestrator, from: cognito, to: orchestrator-runtime,
+     label: "JWKS", optional: true, tags: [identity], topics: [private-request-path],
+     ref: "agentcore/terraform/locals.tf"}
+  - {kind: edge, id: cognito-to-gateway, from: cognito, to: gateway, label: "JWKS",
+     optional: true, tags: [identity], topics: [gateway-to-runtimes],
+     ref: "agentcore/terraform/gateway.tf"}
+  - {kind: edge, id: gateway-to-interceptor, from: gateway, to: identity-interceptor,
+     label: "hook", optional: true, tags: [identity], topics: [gateway-to-runtimes],
+     ref: "agentcore/terraform/interceptor.tf"}
+  - {kind: edge, id: outside-to-mcp-runtime, from: outside-caller, to: mcp-runtime,
+     label: "denied 403", style: denied, topics: [private-request-path, gateway-to-runtimes],
+     ref: "agentcore/terraform/resource_policies.tf"}
+  - {kind: edge, id: admin-to-kb-bucket, from: knowledge-admin, to: kb-bucket,
+     label: "promote", tags: [storage], topics: [kb-ingestion],
+     ref: "agentcore/terraform/s3_kb.tf"}
+  - {kind: edge, id: kb-bucket-to-kms, from: kb-bucket, to: kb-kms-key, label: "SSE-KMS",
+     tags: [storage, encryption], topics: [kb-ingestion], ref: "agentcore/terraform/s3_kb.tf"}

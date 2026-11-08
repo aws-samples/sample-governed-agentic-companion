@@ -1,0 +1,27 @@
+# Diagram topics (example). The diagram specialist matches a draw request to one topic by its
+# trigger phrases, then draws only the diagram_facts tagged with that topic. A fork adds its own
+# topics in knowledge/tier_b/diagram/topics.yaml (Tier-A ids win on a clash). Generic: the
+# example describes this kit's own default private topology, not any deployment.
+# `suggestion` (optional) is the prompt a decline offers for the topic; it must replay to the
+# topic itself (./run.sh diagram --check-facts checks it). Default: "draw the <first trigger>".
+summary: "Example diagram topics for the kit's own default private topology."
+diagram_topics:
+  - id: private-request-path
+    title: "Private request path, no gateway"
+    triggers: ["private network path", "private request path", "request path",
+               "private network", "how a request reaches", "front door path"]
+    suggestion: "draw our private network path"
+  - id: gateway-to-runtimes
+    title: "Opt-in gateway to the MCP runtime"
+    triggers: ["gateway reaches the runtimes", "gateway to runtime", "gateway and runtimes",
+               "mcp runtime", "gateway path"]
+    suggestion: "diagram how the gateway reaches the runtimes"
+  - id: kb-ingestion
+    title: "Tier-B overlay ingestion"
+    triggers: ["kb ingestion", "knowledge base ingestion", "knowledge ingestion",
+               "overlay", "kb bucket"]
+    suggestion: "show our KB ingestion"
+  - id: bedrock-calls
+    title: "Opt-in Bedrock calls"
+    triggers: ["bedrock calls", "model calls", "bedrock path"]
+    suggestion: "draw the bedrock calls"

@@ -7,6 +7,7 @@ Add/replace entries in build_specialists() — routing and gating come for free.
 
 from typing import Dict, List, Tuple
 
+from .diagram_specialist import DiagramSpecialist
 from .external_tool_specialist import ExternalToolSpecialist
 from .platform_specialist import PlatformSpecialist
 from .security_specialist import SecuritySpecialist
@@ -14,7 +15,7 @@ from .security_specialist import SecuritySpecialist
 
 def build_specialists() -> Dict[str, Tuple[object, List[str]]]:
     """name -> (agent instance, routing keywords). Edit this to add your specialists."""
-    return {
+    registry = {
         "platform": (PlatformSpecialist(),
                      ["deploy", "deployment", "environment", "infrastructure", "promote",
                       "release", "runtime", "scale", "region"]),
@@ -27,4 +28,11 @@ def build_specialists() -> Dict[str, Tuple[object, List[str]]]:
         "external_tool": (ExternalToolSpecialist(),
                           ["cli", "tool", "command", "scan", "run", "generate", "bundle",
                            "prepare", "plan"]),
+        # Draws an AWS architecture diagram from KB diagram facts, consulting the specialists
+        # above through their read-only diagram_facts(). Describe-only, LLM-free; declines
+        # honestly when the AWS Architecture Icons were not staged at image build.
+        "diagram": (DiagramSpecialist(), ["diagram", "drawio", "draw.io"]),
     }
+    diagram = registry["diagram"][0]
+    diagram.bind_peers(lambda: {n: a for n, (a, _) in registry.items() if n != "diagram"})
+    return registry

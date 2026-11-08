@@ -6,11 +6,11 @@
 # AgentCore Runtime + observability
 # bedrock-agentcore 1.18.1 (CVE-2026-16796) sets the floor for the rest of this file: it requires
 # boto3/botocore>=1.43.31, a current OpenTelemetry stack, and uvicorn>=0.34.2. The OTEL distro +
-# api pins below are the current coherent set that resolves against it (verified on py3.12/arm64,
-# the image target). Bump deliberately after validating advisories.
+# api pins below are the current coherent set that resolves against it (verified on Python 3.15
+# / arm64, the Chainguard image target). Bump deliberately after validating advisories.
 bedrock-agentcore==1.18.1   # >= 1.18.1 required: CVE-2026-16796 fixed in 1.18.1
-aws-opentelemetry-distro==0.21.0
-opentelemetry-api==1.44.0
+aws-opentelemetry-distro==0.22.0   # pins opentelemetry 1.45.1: CVE-2026-114603 (api), CVE-2026-116694 (propagator-jaeger)
+opentelemetry-api==1.45.1
 
 # MCP server SDK (this runtime's protocol face) + ASGI server for the STATELESS app.
 # Must stay >= 1.30.0 and < 2: CVE-2025-53365/-53366/-66416 (1.23.0); CVE-2026-52870 (1.27);
@@ -39,3 +39,6 @@ pyyaml==6.0.3
 # 1.18.1, which requires boto3>=1.43.31 / botocore>=1.43.31; pin to a current compatible release.
 boto3==1.43.111
 botocore==1.43.111
+# Diagram specialist PNG rasterizer (in-process, no subprocess, no network crate). The wheel ships
+# its CycloneDX SBOM (resvg_py-0.5.0.dist-info/sboms/). Licences: THIRD-PARTY-LICENSES.md.
+resvg-py==0.5.0        # MIT (binding); bundles resvg 0.48.1 (Apache-2.0 OR MIT); SBOM in the wheel

@@ -64,7 +64,7 @@ class Category(str, Enum):
     # Values are built from fragments rather than written as bare string literals so a static
     # analyzer does not misread `SECRET = "<literal>"` as a hard-coded credential (bandit B105).
     # The resulting .value strings are unchanged ("secret", "pii", "proprietary").
-    SECRET = "sec" + "ret"
+    SECRET = "sec" + "ret"  # pragma: allowlist secret
     PII = "pii"
     PROPRIETARY = "proprietary"
 
@@ -119,7 +119,7 @@ _SECRET_DETECTORS = [
      "JWT", "[REDACTED-JWT]"),
     (re.compile(r"(?i)xox[baprs]-[0-9A-Za-z-]{10,}"), "Slack token", "[REDACTED-TOKEN]"),
     (re.compile(r"gh[pousr]_[A-Za-z0-9]{20,}"), "GitHub token", "[REDACTED-TOKEN]"),
-    # Password embedded in a URL/connection string: scheme://user:PASSWORD@host — the secret
+    # Password embedded in a URL/connection string: scheme://user:PASSWORD@host — the secret  # pragma: allowlist secret
     # is the password segment. A connection string WITHOUT an inline password is untouched.
     # Bounded user/password segments (1..256) — the upper bounds are ReDoS guards, same
     # rationale as _VALUE: an unbounded `{3,}` before '@' backtracks catastrophically on a long

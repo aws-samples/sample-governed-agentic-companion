@@ -19,9 +19,12 @@
 # every model call. A governed companion is generative (not pure RAG on every call), so
 # enabling contextual grounding without a grounding document would block valid responses. A
 # fork that always supplies grounding can add it.
+# KICS "IAM Access Analyzer Not Enabled" (K8) fires once per file with any aws_ resource and no
+# analyzer. The analyzer is an account or organization baseline control that a landing zone
+# normally owns; this kit makes it opt-in (enable_access_analyzer, access_analyzer.tf;
+# docs/SECURITY.md SD-8), so the per-file query does not apply to this file.
+# kics-scan disable=e592a0c5-5bdb-414c-9066-5dba7cdea370
 
-# kics-scan ignore-line: "IAM Access Analyzer Not Enabled" is an account/org baseline control
-# made opt-in here via enable_access_analyzer (access_analyzer.tf) — docs/SECURITY.md SD-8.
 resource "aws_bedrock_guardrail" "this" {
   count       = var.create_bedrock_guardrail ? 1 : 0
   name        = "${var.name_prefix}-guardrail"

@@ -1,0 +1,27 @@
+# Test fixture (golden row 16): a fork KB with no presets, 7 nodes in 3 flows (web 2 edges,
+# data 1, async 3). Loaded as tier_b/diagram/diagram_facts by tests/diagram_fixtures.py.
+# Generic, invented content.
+summary: "Fixture: a small fork order system, no presets."
+diagram_facts:
+  - {kind: node, id: browser, label: "Browser", icon: Client, tags: [client]}
+  - {kind: node, id: storefront, label: "Storefront", icon: AWSLambda, tags: [compute]}
+  - {kind: node, id: orders-api, label: "Orders API", icon: AWSLambda, aliases: [orders],
+     tags: [compute]}
+  - {kind: node, id: orders-db, label: "Orders database", icon: AmazonSimpleStorageService,
+     tags: [storage]}
+  - {kind: node, id: order-queue, label: "Order queue", icon: AmazonSimpleQueueService,
+     tags: [queue]}
+  - {kind: node, id: fulfilment, label: "Fulfilment worker", icon: AWSLambda, tags: [compute]}
+  - {kind: node, id: archive, label: "Order archive", icon: AmazonSimpleStorageService,
+     tags: [storage]}
+  - {kind: edge, id: browser-to-storefront, from: browser, to: storefront, label: "HTTPS",
+     tags: [web]}
+  - {kind: edge, id: storefront-to-api, from: storefront, to: orders-api, label: "REST",
+     tags: [web]}
+  - {kind: edge, id: api-to-db, from: orders-api, to: orders-db, label: "write", tags: [data]}
+  - {kind: edge, id: api-to-queue, from: orders-api, to: order-queue, label: "enqueue",
+     tags: [async]}
+  - {kind: edge, id: queue-to-fulfilment, from: order-queue, to: fulfilment, label: "poll",
+     tags: [async]}
+  - {kind: edge, id: fulfilment-to-archive, from: fulfilment, to: archive, label: "store",
+     tags: [async]}

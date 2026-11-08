@@ -3,8 +3,13 @@
 
 # Vulnerability triage and remediation plan — 2026-10-10
 
-Source of truth: `backup/personal_projects-alias_b-baljay-governed-agentic-companion_vulnerabilities_2026-10-10T0512.csv`
-(GitLab vulnerability export, 108 data rows). Scanned commit per the pipeline log: `b7595a1`
+> Historical record. It describes the CI pipeline of the source repository this starter kit was
+> developed in, including its security dashboard and its Gitleaks secret-detection job. This
+> repository's CI is `.github/workflows/ci.yml`, which runs detect-secrets instead; gitleaks runs
+> here only as a local pre-commit hook.
+
+Source of truth: `<vulnerability-export>.csv`
+(CI security-dashboard export, 108 data rows). Scanned commit per the pipeline log: `b7595a1`
 (current `HEAD`/`origin/main`). This is the design/triage phase — **no source is edited here**.
 
 Governed by `PRINCIPLES.md`: do not deploy/apply/mutate any environment (Tenet 1 — no
@@ -19,8 +24,8 @@ and no security control weakened to silence a scanner.
 
 | Category | Rows | Scanners | Disposition |
 |---|---:|---|---|
-| A. PyJWT 2.13.0 dependency CVEs | 56 | GitLab SBoM + Trivy (both files × 14 CVEs ≈ 28 each) | **FIX** — bump pin |
-| B. mcp 1.x dependency CVEs | 2 | GitLab SBoM | **FIX** — bump pin |
+| A. PyJWT 2.13.0 dependency CVEs | 56 | CI dependency-scanning SBoM + Trivy (both files × 14 CVEs ≈ 28 each) | **FIX** — bump pin |
+| B. mcp 1.x dependency CVEs | 2 | CI dependency-scanning SBoM | **FIX** — bump pin |
 | C. Gitleaks "Password in URL" (false positive) | 1 | Gitleaks | **SUPPRESS** inline (real detector regex) |
 | D. SAST lint — onboarding scripts (PS1 + sh) | 19 | PSScriptAnalyzer (16) + ShellCheck (3) | **ALREADY FIXED in `b7595a1`** / 1 false positive |
 | E. IaC — Terraform (kics + Checkov) | 15 | kics (11) + Checkov (5), incl. 5 `unknown` | **ALREADY DISPOSITIONED in `b7595a1`** |
@@ -34,13 +39,13 @@ and no security control weakened to silence a scanner.
 
 The scan is **largely stale**. `HEAD` equals the scanned commit `b7595a1` ("feat: v2 uplift + CSR
 remediation + supply-chain hygiene"), and categories **D and E are already remediated or
-dispositioned in that very commit** — the GitLab vulnerability *records* persist from an earlier
+dispositioned in that very commit** — the dashboard vulnerability *records* persist from an earlier
 pipeline run on pre-remediation code and auto-resolve only when a fresh default-branch scan runs.
 The **genuinely live, code-change-required** work is narrow:
 
 1. **PyJWT** is still pinned at the vulnerable `2.13.0` in both requirements files (category A).
 2. **mcp** is still pinned at `1.28.0` in the mcp_runtime file (category B).
-3. The **Gitleaks** false positive needs an *inline* allowlist because GitLab Secret-Detection's
+3. The **Gitleaks** false positive needs an *inline* allowlist because the CI secret-detection job's
    default Gitleaks ruleset does not consume the repo `.gitleaks.toml` path allowlist (category C).
 
 Everything in D and E is confirmed present in the working tree below; the action there is **verify
@@ -137,8 +142,8 @@ pip error** — do not silently downgrade a security fix (Tenet 4 / brief hard c
       Append `  # gitleaks:allow` to the end of the `connection-string password` detector line
       (`agents/data_protection.py`, the `re.compile(r"(?i)://[^/\s:@]{1,256}:[^/\s:@]{3,256}@")` tuple,
       currently **line 127**; the CSV's "line 122" points at the start of its comment block). Do **NOT**
-      alter the regex. Also add a one-line comment in `.gitleaks.toml` noting that GitLab
-      Secret-Detection runs the default Gitleaks ruleset and the inline annotation is what suppresses
+      alter the regex. Also add a one-line comment in `.gitleaks.toml` noting that the CI
+      secret-detection job runs the default Gitleaks ruleset and the inline annotation is what suppresses
       the finding there (the existing `paths` allowlist only applies to a local `--config .gitleaks.toml`
       run). Do not remove the existing `.gitleaks.toml` entry.
       Files: `agents/data_protection.py`, `.gitleaks.toml`.
@@ -156,7 +161,7 @@ pip error** — do not silently downgrade a security fix (Tenet 4 / brief hard c
 ## 4. Findings ACCEPTED / already-dispositioned (verify, do not re-fix)
 
 Each of the following was confirmed **present in the current working tree (`b7595a1`)** during triage.
-They are stale GitLab records that a fresh default-branch scan will auto-resolve. No new SD rows are
+They are stale dashboard records that a fresh default-branch scan will auto-resolve. No new SD rows are
 required — every IaC acceptance already maps to an existing `docs/SECURITY.md` row and carries a
 reviewed inline suppression. **`docs/SECURITY.md` remains the single source of truth.**
 
@@ -185,7 +190,7 @@ reviewed inline suppression. **`docs/SECURITY.md` remains the single source of t
 | Checkov CKV_AWS_272 Lambda code-signing `interceptor.tf:105` | **SD-9** (in-repo single-file source pinned by `source_code_hash`) | inline `checkov:skip=CKV_AWS_272` + `.checkov.yaml` |
 
 > If a future scan still reports any Category D/E row after a fresh run on `main`, dismiss it in
-> GitLab with a comment citing the SD row / FP rationale above. Do **not** add a blanket scanner
+> the security dashboard with a comment citing the SD row / FP rationale above. Do **not** add a blanket scanner
 > disable and do **not** weaken any detector or control (Tenet 4; brief hard constraint).
 
 ---

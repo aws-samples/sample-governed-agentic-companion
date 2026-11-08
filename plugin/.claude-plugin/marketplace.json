@@ -11,7 +11,7 @@
     {
       "name": "governed-agentic-companion",
       "source": "./",
-      "description": "Governed multi-agent companion starter kit (product-agnostic; replace the example specialists with your own)."
+      "description": "Governed domain-knowledge companion starter kit (product-agnostic; replace the example specialists with your own)."
     }
   ]
 }

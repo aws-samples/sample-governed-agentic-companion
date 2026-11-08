@@ -5,12 +5,14 @@ Guidance for AI coding agents and contributors working in this repository. Follo
 
 ## Project overview
 
-Governed Agentic Companion is a **product- and customer-agnostic starter kit** for a governed,
-orchestrator-driven multi-agent builder companion on Amazon Bedrock AgentCore, reachable from
-Kiro, Claude Code, or any MCP client. It is **safe by construction**: it never deploys or
-mutates an environment, never leaks a secret, and never presents an ungrounded guess as fact —
-and the boundary that keeps it safe has **no off switch**. Governance is defined in
-`PRINCIPLES.md` (13 tenets, SHA-256 integrity-verified at startup).
+Governed Agentic Companion is a **product- and customer-agnostic starter kit** for a governed
+domain-knowledge companion for builders on Amazon Bedrock AgentCore, reachable from Kiro, Claude
+Code, or any MCP client. A single orchestrator routes each request to one domain specialist.
+The Governance Gate blocks responses that claim a deployment or a system-of-record write,
+contain secret material, or present an exploration-zone answer below the configured grounding
+threshold. It has no off switch. The text gate is an observability signal, not proof of what an
+agent did (Tenet 13). Governance is defined in `PRINCIPLES.md` (13 tenets, SHA-256 integrity-verified by
+`./run.sh status` and by the unit test suite, which CI runs on every push).
 
 **Fork-and-build.** This is a starter kit: fork it per engagement, replace the example
 specialists and knowledge base with your own, and keep the governance. License is **MIT-0**.
@@ -29,7 +31,15 @@ python3 -m venv .venv && .venv/bin/python -m pip install -r requirements.txt
 .venv/bin/python -m pytest -q   # full suite (runs with no AWS and no LLM) — must pass before commit
 ./run.sh status                 # integrity + knowledge load
 echo "I have deployed to prod" | ./run.sh gate   # watch the always-on gate BLOCK an action claim
+./run.sh verify --parity        # every gate front door reaches the same verdict
+# Terraform (never plan or apply from an agent; init without a backend is safe):
+cd agentcore/terraform && terraform fmt -check -recursive \
+  && terraform init -backend=false -input=false && terraform validate
 ```
+
+`terraform test` (plan-only, mocked providers) auto-loads a local `terraform.tfvars`, which breaks
+a mocked run. Run it in a copy of the repository without `terraform.tfvars`, `backend.tf` and
+`.terraform/` (see `agentcore/terraform/README.md`), for the companion and for `platform/`.
 
 Always run the tests and `status` before committing. Do not commit if tests fail or the
 governance integrity check reports tampering.
@@ -41,24 +51,36 @@ governance integrity check reports tampering.
 | Orchestrator | Classifies each request and routes to one specialist; every response passes the always-on Governance Gate. Non-interactive: `./run.sh ask "<request>"` |
 | platform (example) | Example platform/infrastructure specialist — replace with your own |
 | security (example) | Example security specialist — replace with your own |
+| external_tool (example) | Guidance-only external CLI specialist (plans the command; never runs it) |
+| diagram (preview) | **Preview, included here but not yet production-ready; a redesign is planned (agent-to-agent knowledge gathering and an intent-aware single-view layout).** Current limits: no real peer collaboration (reads only each specialist's hand-authored `diagram_facts`, never asks peers or the orchestrator, never uses their wider knowledge); intent is largely ignored (the deterministic keyword planner is the default, the Bedrock planner is off); the view splitter overrides an explicit single view; each view is capped (24 nodes, 6 for a generic view), so a dense grouped single overview is impossible, and the quality check scores legibility, not fit to the request. Today it draws AWS architecture diagrams from natural-language requests over a catalogue of every specialist's `diagram_facts` (its own KB slice plus each peer's read-only `diagram_facts()`). Deterministic by default; an opt-in Bedrock planner (`diagram.planner.mode: bedrock`) only selects fact ids and falls back to the deterministic planner on any error. A large selection becomes up to 4 views (presets, then flow views), each its own bundle; every element cites a source (listed per element in the report); measured quality check per view; returns `.drawio`, `.svg`, `.png` and a report per view. Declines honestly, with prompts that work, when the KB cannot support a request (exit 4) or when the AWS Architecture Icons were not staged at image build. `./run.sh diagram "<request>"` |
 
 Specialists are small classes over `BaseAgent` declared in `agents/specialists/`
 (`build_specialists()`); routing keywords and gating come for free. Replace the examples with
 your domain specialists per engagement.
 
-Three-tier execution: Tier 1 deterministic (always on) → Tier 2 local LLM (Ollama) → Tier 3
-cloud LLM (Bedrock). **Trust zones:** Tier 1 = verified (deterministic, grounded by
-construction); Tier 2/3 = exploration (LLM, non-deterministic — a claim to verify). The gate
-blocks exploration-zone answers below the 0.95 grounding bar; verified-zone output is grounded
-by construction. A specialist that cannot ground an answer declines honestly rather than guess.
+Three-tier execution: Tier 1 ships. Tiers 2 and 3 are fork extension points
+(`llm_answer_or_decline`), and the `llm.*` settings are reserved. **Trust zones:** Tier 1 =
+verified (deterministic, grounded by construction); Tier 2/3 = exploration (LLM,
+non-deterministic, a claim to verify). The gate blocks exploration-zone answers below the
+configured threshold (`grounding.fact_threshold`, default 0.95, tighten-only); verified-zone output
+is grounded by construction. A specialist that cannot ground an answer declines and offers next
+steps rather than guess.
+
+Success measures: the configured threshold; `./run.sh audit` for gate decisions and sources;
+`./run.sh verify --maturity` for grounding and open-gap rates (an advisory proxy); and
+`tests/golden` as a regression check (not an accuracy measure).
 
 ## Front doors
 
-- **CLI** — `./run.sh status | ask | gate | bible | audit | feedback | plan | verify`.
+- **CLI**: `./run.sh status | ask | gate | bible | audit | feedback | plan | verify | diagram |
+  diagram-fetch | diagram-assets` (`diagram --check-facts` validates diagram facts, exit 0/1).
 - **Claude Code plugin** — `plugin/` (orchestrator + example specialists as sub-agents, a Skill,
   MCP wiring, and a `Stop`-hook governance backstop). MIT-0.
 - **Cloud (MCP)** — reach a deployed AgentCore runtime via the local stdio bridge
-  (`frontdoor/mcp_bridge.py`) or the gateway HTTP path. See `docs/FRONT-DOORS.md`.
+  (`frontdoor/mcp_bridge.py`) or the gateway HTTP path. See `docs/FRONT-DOORS.md`. The bridge's
+  `draw_diagram` tool is the front door that lands the verified diagram files in the developer's
+  workspace (runtime upstream by default, or `GAC_BRIDGE_UPSTREAM=gateway`); a direct-gateway
+  client gets the gated text and a compact manifest only.
 - **Local gate MCP server** — `frontdoor/gate_mcp_server.py` exposes the gate as a local,
   deterministic MCP tool (`govern_artifact`) — no AWS/runtime needed.
 - **Agentic-SDLC governance hook** — `integrations/aidlc/` wires the gate as a `Stop`-style
@@ -72,13 +94,28 @@ by construction. A specialist that cannot ground an answer declines honestly rat
 unchanged standalone behavior) or CONSUME a shared pool that a separate platform stack owns
 (`manage_identity_pool = false` + `existing_user_pool_id` / `existing_oidc_issuer`). On the
 consume path GAC does NOT create the pool/domain, but it STILL creates its OWN
-`gac-engine/invoke` resource-server scope + front-door/OAuth/M2M clients IN the shared pool
-(flavor isolation). The gating split is in `cognito.tf` (`pool_count` owned-only, `client_count`
+`<engine_resource_server_identifier>/invoke` resource-server scope (default `gac-engine`) and its
+front-door and OAuth clients IN the shared pool, plus an M2M client only when the gateway's
+outbound hop uses OAuth (public mode) (flavor isolation). The gating split is in `cognito.tf` (`pool_count` owned-only, `client_count`
 always-when-cognito, `effective_pool_id` = created-or-shared). `backend.tf` (remote S3 state) is
 environment-specific and gitignored; only `backend.tf.example` is tracked. This lets one shared
-pool + one remote-state backend serve several forks of this starter kit in one account, each a
-distinct `name_prefix` with its own `<prefix>-engine/invoke` scope and clients. Flipping a LIVE
-owning deployment to consume is a human-run state import, never a recreate.
+pool and one state backend serve several companions in one account (the `platform/` stack:
+`modules/backend-bootstrap` and `modules/shared-identity`, plus an optional shared network).
+Flipping a LIVE owning deployment to consume is a human-run state import, never a recreate.
+
+## Private networking (default)
+
+`network_access = "private"` is the default; public mode needs `acknowledge_public_endpoint = true`.
+`modules/private-network` builds the VPC (with `create_vpc = true`; your own VPC otherwise),
+private subnets, interface endpoints, the S3 gateway endpoint, the endpoint security groups and,
+for a VPC it creates, VPC Flow Logs. `resource_policies.tf`, `ecr.tf`, `s3_kb.tf` and `iam.tf`
+hold the private-mode denies (gateway and orchestrator via `aws:SourceVpce`, MCP runtime gateway
+role only, Memory, ECR, KB bucket, the runtime role's 17-action explicit deny). Opt-ins: the
+private access probe (`enable_private_access_probe`, a test stand-in to disable after testing) and
+a Route 53 Resolver inbound endpoint (`enable_resolver_inbound_endpoint`). Since 3.2.1 the
+private-mode gateway target waits 30 s for the gateway role's grants to propagate. The 2026-10-31
+sandbox validation and the post-deploy tests are in `docs/DEPLOY.md`. Do not change these policies
+as part of a cleanup.
 
 ## v2.0.0 capabilities (the uplift)
 
@@ -119,8 +156,16 @@ adds a self-evolution loop plus the surfaces that let it serve as a governance s
   corpus is derived from `knowledge/` (a pointer, not a rival ledger — Tenet 8) and gitignored.
 - **No secrets in the repo:** credentials live in a gitignored env file; the knowledge base
   holds no credentials or PII. Approved LLM providers only (Bedrock, Ollama).
-- **Governance integrity (Tenet 9):** `PRINCIPLES.md` is SHA-256 baselined and verified at
-  startup; changes require a re-baseline via `scripts/rebaseline_integrity.py`.
+- **Entitlement (3.4.0):** with a JWT authorizer, the gateway and the orchestrator runtime
+  require the token's `cognito:groups` (`entitlement_claim_name`) to contain the companion's
+  group (`<name_prefix>-users` by default; `require_entitlement_group`, refused as `false` in
+  public mode); the identity interceptor re-checks it and fails closed with "GAC: not entitled".
+  On a shared pool the companion never creates the group: the pool's owner does, and the plan
+  fails clearly if it is missing. Adding a user to the group is a human-run Cognito step
+  (`docs/DEPLOY.md`).
+- **Governance integrity (Tenet 9):** `PRINCIPLES.md` is SHA-256 baselined and verified by
+  `./run.sh status` and by the unit test suite (run in CI on every push); changes require a re-baseline via
+  `scripts/rebaseline_integrity.py`.
 
 ## Code style and conventions
 
@@ -135,3 +180,6 @@ adds a self-evolution loop plus the surfaces that let it serve as a governance s
 - Do not add code paths that deploy or mutate an environment (Tenet 1).
 - Do not weaken Tenet 1 or Tenet 3 — they are absolute; do not add an off switch to the gate.
 - Do not put customer-identifying data anywhere in the repo (Tenet 6).
+- Never commit the AWS Architecture Icons: no zip, no extracted icon, no catalog. Stage the zip in
+  the gitignored `agentcore/diagram-icons/` (or build `.diagram-assets/` locally); generated
+  diagrams go to the gitignored `outputs/` tree or the developer's workspace, never into git.

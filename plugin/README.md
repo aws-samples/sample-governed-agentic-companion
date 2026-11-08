@@ -1,7 +1,7 @@
 # Governed Agentic Companion (Claude Code Plugin)
 
-A product-agnostic, installable starter kit that packages the Governed Agentic Companion
-multi-agent system (orchestrator + example specialists), a domain-knowledge Skill, and MCP
+A product-agnostic, installable starter kit that packages the Governed Agentic Companion,
+a governed domain-knowledge companion (orchestrator + example specialists), a domain-knowledge Skill, and MCP
 wiring into a Claude Code plugin.
 
 This plugin produces **review-ready artifacts only**. It never deploys.
@@ -10,10 +10,10 @@ This plugin produces **review-ready artifacts only**. It never deploys.
 
 - **Human-owned deployment (Tenet 1):** no agent deploys, applies, promotes, restarts, or
   mutates any environment — including non-production.
-- **Autonomous, grounded review (Tenet 4):** analysis and feedback may be autonomous when
+- **Autonomous, grounded review (Tenet 2):** analysis and feedback may be autonomous when
   grounded (traceable to knowledge or a read-only source). Otherwise it defers to a human.
-- **Bounded agency (Tenet 3):** writes go only to Jira, Confluence, GitHub. All systems of
-  record (AWS and any domain system) are read-only.
+- **Bounded agency (Tenet 3):** writes go only to human-reviewed collaboration surfaces (issue
+  tracker, wiki, source control). All systems of record (AWS and any domain system) are read-only.
 
 ## Layout
 
@@ -27,7 +27,8 @@ plugin/
 ├── agents/                  # sub-agents (each ships disallowedTools: Bash)
 │   ├── companion-orchestrator.md
 │   ├── companion-platform.md
-│   └── companion-security.md
+│   ├── companion-security.md
+│   └── companion-diagram.md     # calls draw_diagram on the companion-files bridge
 ├── hooks/                   # Stop-hook governance backstop (code-level enforcement)
 │   ├── hooks.json
 │   └── scripts/companion-governance-gate.sh
@@ -52,12 +53,19 @@ venv is not found, the hook fails open (never blocks on infrastructure absence).
 |--------|--------|------|
 | confluence, jira, github | Read + **Write** | Read context; write docs, issues, PRs for human review |
 | aws | **Read-only** | Target infrastructure state |
-| companion-engine | JWT-authorized | The governed engine (`ask_companion`/`companion_kb`); responses are gated in the cloud |
+| companion-engine | JWT-authorized | The governed engine (`ask_companion`/`companion_kb`/`draw_diagram`); responses are gated in the cloud |
+| companion-files | Local stdio bridge (gateway upstream, `draw_diagram` only) | Writes the verified diagram files under `GAC_DIAGRAM_WORKSPACE_ROOT/outputs/diagrams/`; set to `ask` in `permissions.example.json` |
 
 The `companion-engine` server is reached either through the **AgentCore Gateway** HTTP endpoint
 (shown in `.mcp.json`) or the **local stdio bridge** (`../frontdoor/mcp.example.json`, option A) —
-use one. Both expose the identical two tools; the gateway does inbound JWT auth and the runtime's
+use one. Both expose the identical tools; the gateway does inbound JWT auth and the runtime's
 response is already gated in the cloud.
+
+**Landing diagram files needs the stdio bridge.** The `companion-diagram` sub-agent calls
+`mcp__companion-files__draw_diagram`, the local bridge in gateway mode, which verifies each
+SHA-256 and writes `.drawio`, `.svg`, `.png` and the report into your workspace. Calling
+`gac___draw_diagram` through `companion-engine` (the direct gateway) returns the gated text and a
+compact manifest only.
 
 Enforcement is layered (defense in depth):
 1. **Per-agent (shipped):** every agent declares `disallowedTools: Bash`, so no agent can run a
@@ -70,8 +78,8 @@ Enforcement is layered (defense in depth):
    the engine to `ask`, and explicitly deny deployment/mutation shell commands.
 
 > GitHub is read+write so agents can open pull requests. A human always reviews and merges;
-> opening a PR is not a deployment. Swap `github` for a `gitlab` server if that is the
-> engagement's source host.
+> opening a PR is not a deployment. Swap `github` for your git host's MCP server if the
+> engagement uses another source host.
 
 ## Install (your Claude Code)
 

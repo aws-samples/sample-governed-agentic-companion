@@ -17,7 +17,9 @@ Tier A stays locked and code-review-only). This keeps the compounding loop insid
 model: no fabrication, no self-rewriting, a human owns every KB change.
 
 Design constraints (match the kit): deterministic, stdlib-only, fail-open (feedback must never
-break a response path), metadata-safe (no raw secrets stored). Records live at
+break a response path), and guarded by the data-protection guard: before a request is staged it
+passes `data_protection.scrub_or_reject`. A request with secret material is not staged, PII is
+redacted, and if the guard itself fails nothing is staged (unguarded text is never persisted). Records live at
 `.feedback/candidates.jsonl` (gitignored); override with GAC_FEEDBACK_PATH.
 """
 
@@ -89,16 +91,33 @@ class FeedbackLoop:
         LEARNING GAP was detected (and staged), else None. Fail-open (never raises).
 
         A learning gap = the work was not blocked by an absolute boundary, but it did not ground
-        well: no sources matched, or confidence is below the fact bar. That is exactly the signal
-        that the knowledge base is thin here — a candidate for human-reviewed growth. A clean,
-        well-grounded answer produces NO candidate (nothing to learn); the audit trail already
-        records that it happened."""
+        well: no sources matched, or an exploration-zone (LLM) answer is below the fact bar. The
+        bar applies ONLY to the exploration zone: a verified-zone (deterministic) answer with at
+        least one source is grounded by construction, whatever its heuristic overlap score. That
+        is exactly the signal that the knowledge base is thin here — a candidate for
+        human-reviewed growth. A clean, well-grounded answer produces NO candidate (nothing to
+        learn); the audit trail already records that it happened."""
         if not self.enabled:
             return None
         try:
-            grounded = bool(sources) and (confidence is None or confidence >= fact_bar)
+            grounded = bool(sources) and (
+                trust_zone == "verified"
+                or (confidence is not None and confidence >= fact_bar))
             if blocked or grounded:
                 # Blocked = a governance decision (not a KB gap). Grounded = nothing to learn.
+                return None
+            # Data-protection guard (Tenet 6) before anything is persisted. A rejected request
+            # (secret material) or a guard failure stages nothing; PII is redacted in place.
+            try:
+                from .data_protection import scrub_or_reject
+                res = scrub_or_reject((request or "").strip(), stage="feedback-stage",
+                                      actor=agent)
+            except Exception as exc:
+                logger.info("feedback not staged: data-protection guard failed (%s)",
+                            type(exc).__name__)
+                return None
+            if not res.ok:
+                logger.info("feedback not staged: %s", "; ".join(res.reasons))
                 return None
             cid = _candidate_id(request, agent)
             candidate = {
@@ -106,7 +125,8 @@ class FeedbackLoop:
                 "id": cid,
                 "status": STATUS_CANDIDATE,
                 "agent": agent,
-                "request": _redact((request or "").strip())[:500],
+                # _redact stays as a second pass over the guard's cleaned text.
+                "request": _redact(res.cleaned)[:500],
                 "gap": ("no knowledge grounded this request"
                         if not sources else
                         f"grounding below the fact bar (confidence "
@@ -134,7 +154,8 @@ class FeedbackLoop:
         for ln in self.path.read_text(encoding="utf-8").splitlines():
             try:
                 out.append(json.loads(ln))
-            except Exception:
+            except Exception as e:  # a torn or foreign line is skipped, not fatal
+                logger.debug("feedback: skip unreadable line (%s)", type(e).__name__)
                 continue
         return out
 

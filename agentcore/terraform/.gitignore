@@ -8,8 +8,8 @@
 crash.log
 crash.*.log
 
-# NOTE: .terraform.lock.hcl is intentionally NOT ignored — commit it for reproducible
-# provider versions across operators (Terraform best practice).
+# Provider lock files are local (written by `terraform init`); versions.tf pins each provider.
+.terraform.lock.hcl
 
 # Real variable files (the .example is tracked; the real one is not)
 terraform.tfvars

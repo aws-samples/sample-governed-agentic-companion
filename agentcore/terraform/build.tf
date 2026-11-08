@@ -10,12 +10,33 @@
 
 locals {
   build_script = "${path.module}/scripts/build_and_push.sh"
+  # Diagram icons (deployer-staged, gitignored) and the diagram code: staging or replacing the
+  # zip, or editing the diagram engine, forces a rebuild. A rebuild needs a NEW image_tag (ECR
+  # tags are immutable). Other engine edits (agents/, knowledge/ outside the diagram KB files)
+  # are not hashed here; see docs/DEPLOY.md.
+  diagram_icons_dir  = "${local.repo_root}/agentcore/diagram-icons"
+  diagram_icons_zips = sort(fileset(local.diagram_icons_dir, "*.zip"))
+  diagram_icons_trigger = length(local.diagram_icons_zips) == 0 ? "absent" : sha1(join("", [
+    for f in local.diagram_icons_zips : filesha256("${local.diagram_icons_dir}/${f}")
+  ]))
+  # The diagram KB (presets, vocabulary, facts) is part of what a view draws, so it is hashed too.
+  diagram_code_trigger = sha1(join("", concat(
+    [for f in sort(fileset(local.repo_root, "agents/diagram/**/*.py")) : filesha1("${local.repo_root}/${f}")],
+    [for f in sort(fileset(local.repo_root, "knowledge/**/diagram/*.yaml")) : filesha1("${local.repo_root}/${f}")],
+    [for f in sort(fileset(local.repo_root, "knowledge/**/diagram_facts.yaml")) : filesha1("${local.repo_root}/${f}")],
+    [filesha1("${local.repo_root}/agents/specialists/diagram_specialist.py"),
+      filesha1("${local.repo_root}/scripts/build_icon_catalog.py"),
+    filesha1("${local.repo_root}/agentcore/app/diagram-assets/requirements.txt")],
+  )))
 
   # Files whose change should force a rebuild. Kept coarse but meaningful.
   orchestrator_build_trigger = sha1(join("", [
     filesha1("${local.repo_root}/agentcore/app/orchestrator/Dockerfile"),
     filesha1("${local.repo_root}/agentcore/app/orchestrator/runtime_entrypoint.py"),
     filesha1("${local.repo_root}/agentcore/app/orchestrator/requirements.txt"),
+    local.diagram_icons_trigger,
+    local.diagram_code_trigger,
+    var.diagram_icons_sha256,
     var.image_tag,
   ]))
 
@@ -23,6 +44,9 @@ locals {
     filesha1("${local.repo_root}/agentcore/app/mcp_runtime/Dockerfile"),
     filesha1("${local.repo_root}/agentcore/app/mcp_runtime/runtime_mcp_entrypoint.py"),
     filesha1("${local.repo_root}/agentcore/app/mcp_runtime/requirements.txt"),
+    local.diagram_icons_trigger,
+    local.diagram_code_trigger,
+    var.diagram_icons_sha256,
     var.image_tag,
   ]))
 }
@@ -43,6 +67,8 @@ resource "null_resource" "build_push_orchestrator" {
       ECR_REPO_URL = aws_ecr_repository.orchestrator.repository_url
       IMAGE_TAG    = var.image_tag
       AWS_REGION   = local.region
+      # Optional icons-zip checksum, forwarded as a --build-arg (never echoed back in full).
+      GAC_DIAGRAM_ICONS_SHA256 = var.diagram_icons_sha256
     }
   }
 
@@ -65,6 +91,8 @@ resource "null_resource" "build_push_mcp_runtime" {
       ECR_REPO_URL = aws_ecr_repository.mcp_runtime.repository_url
       IMAGE_TAG    = var.image_tag
       AWS_REGION   = local.region
+      # Optional icons-zip checksum, forwarded as a --build-arg (never echoed back in full).
+      GAC_DIAGRAM_ICONS_SHA256 = var.diagram_icons_sha256
     }
   }
 

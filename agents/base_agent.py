@@ -12,16 +12,25 @@ Orchestrator and every front door can call any agent the same way.
 
 from __future__ import annotations
 
+import copy
 import logging
 import re
 from pathlib import Path
-from typing import List, Tuple
+from typing import List, Optional, Tuple
 
 import yaml
 
 logger = logging.getLogger(__name__)
 
 _KNOWLEDGE_ROOT = Path(__file__).resolve().parent.parent / "knowledge"
+
+
+def _is_diagram_key(key: str) -> bool:
+    """True for KB keys that hold diagram facts or diagram topics. Those entries are loaded (so
+    the overlay and memory layers apply) but never ground a prose answer, so adding them leaves
+    every existing answer byte-identical."""
+    return (key.rsplit("/", 1)[-1] == "diagram_facts"
+            or key.startswith(("tier_a/diagram/", "tier_b/diagram/")))
 
 
 class BaseAgent:
@@ -55,8 +64,8 @@ class BaseAgent:
         try:
             from .kb_overlay import apply_overlay
             self._knowledge = apply_overlay(self._knowledge)
-        except Exception:
-            pass
+        except Exception as e:  # fails open to the Tier-A baseline
+            logger.debug("kb overlay not applied (%s)", type(e).__name__)
         # Optional org/team/project memory-layer precedence over the Tier-B overlay. No-op when
         # no layer entries are supplied (default), so existing behavior is byte-for-byte
         # unchanged. Layer entries come from human-promoted feedback (feedback.py) applied to the
@@ -64,8 +73,8 @@ class BaseAgent:
         try:
             from .memory_layers import resolve_layers
             self._knowledge = resolve_layers(self._knowledge, self._layer_entries())
-        except Exception:
-            pass
+        except Exception as e:  # fails open: layers never escalate trust
+            logger.debug("memory layers not applied (%s)", type(e).__name__)
 
     def _layer_entries(self):
         """Hook for forks/overlays to supply promoted org/team/project layer records. The base
@@ -80,7 +89,43 @@ class BaseAgent:
         metadata (it names what the file is about)."""
         return [(key, (key.replace("/", " ").replace("_", " ") + " "
                        + yaml.safe_dump(data, default_flow_style=False)).lower())
-                for key, data in self._knowledge.items()]
+                for key, data in self._knowledge.items() if not _is_diagram_key(key)]
+
+    def diagram_facts(self, topic: Optional[str] = None) -> List[dict]:
+        """Read-only. Return deep copies of the diagram facts tagged with `topic` (every entry
+        when `topic` is None: the fact catalogue) from keys that
+        start with one of this specialist's own knowledge_dirs prefixes (f"{d}/") and whose last
+        segment is `diagram_facts`. Each copy carries source = f"{self.name}:{kb_key}#{fact_id}"
+        and kb_ref = f"{kb_key}#{fact_id}". Never routes, never gates, never writes, never calls
+        another agent, never calls handle_request. A team-added specialist inherits it unchanged.
+
+        Entries are returned raw (schema validation happens in agents/diagram/facts.py); a
+        non-dict entry is skipped."""
+        prefixes = tuple(f"{d.rstrip('/')}/" for d in self.knowledge_dirs)
+        out: List[dict] = []
+        for key in sorted(self._knowledge):
+            if not prefixes or not key.startswith(prefixes):
+                continue
+            if key.rsplit("/", 1)[-1] != "diagram_facts":
+                continue
+            data = self._knowledge.get(key)
+            entries = data.get("diagram_facts") if isinstance(data, dict) else None
+            if not isinstance(entries, list):
+                continue
+            for entry in entries:
+                if not isinstance(entry, dict):
+                    continue
+                if topic is not None:
+                    topics = entry.get("topics")
+                    if not isinstance(topics, list) or topic not in topics:
+                        continue
+                fact = copy.deepcopy(entry)
+                fid = str(entry.get("id", ""))
+                fact["kb_key"] = key
+                fact["kb_ref"] = f"{key}#{fid}"
+                fact["source"] = f"{self.name}:{key}#{fid}"
+                out.append(fact)
+        return out
 
     # -- measured confidence + sources -------------------------------------------
 
@@ -213,20 +258,27 @@ class BaseAgent:
         Deterministic (Tenet-1 path) note: this takes the LLM text as an argument rather than
         calling any provider, so the base kit keeps no LLM dependency (see AGENTS.md)."""
         score = self.assess_confidence(llm_answer, request)
-        if score >= self._FACT_BAR:
+        try:
+            from .config import load_config, resolve_fact_threshold
+            bar = resolve_fact_threshold(load_config())
+        except Exception:  # pragma: no cover - defensive; fall back to the floor
+            bar = self._FACT_BAR
+        self._FACT_BAR = bar
+        if score >= bar:
             return llm_answer
         return self._peering_decline(request, scope_hint=scope_hint)
 
-    #: grounding bar an LLM (exploration-zone) answer must clear (Tenet 4). Sourced from the
-    #: gate's own threshold so a fork's answer-or-decline decision matches what the gate enforces.
-    try:
-        from .governance_gate import CONFIDENCE_FACT_THRESHOLD as _FACT_BAR
-    except Exception:  # pragma: no cover - defensive; gate import should always succeed
-        _FACT_BAR = 0.95
+    #: grounding bar an LLM (exploration-zone) answer must clear (Tenet 4). Kept for backward
+    #: compatibility; llm_answer_or_decline resolves the configured, tighten-only threshold at
+    #: call time (the same value the gate enforces) and stores it here.
+    _FACT_BAR = 0.95
 
     def _answer_from_knowledge(self, request: str) -> str:
         """Deterministic Tier-1 answer: surface the most relevant knowledge entry."""
         _score, sources = self.assess_confidence_detail(request, request)
+        if not sources:
+            return ""
+        sources = [s for s in sources if not _is_diagram_key(s)]
         if not sources:
             return ""
         key = sources[0]

@@ -137,9 +137,9 @@ def _load_cfg() -> Dict[str, Any]:
             for k in cfg:
                 if k in block and isinstance(block[k], (int, float)):
                     cfg[k] = block[k]
-    except Exception:
+    except Exception as e:
         # No yaml, no config, or malformed block -> defaults. Report still works.
-        pass
+        logger.debug("maturity config not loaded (%s)", type(e).__name__)
     return cfg
 
 

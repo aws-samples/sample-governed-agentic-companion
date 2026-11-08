@@ -29,7 +29,7 @@ DEFAULT_ENV_FILE = "~/.companion-frontdoor.env"
 # These are the NAMES of environment variables, not secret values. GAC_GATEWAY_TOKEN is the
 # env var the front door reads/writes the (externally-provided) gateway JWT from; no credential
 # is embedded here. (Bandit B105 false positive on the all-caps "*_TOKEN" identifier.)
-TOKEN_VAR = "GAC_GATEWAY_TOKEN"  # nosec B105
+TOKEN_VAR = "GAC_GATEWAY_TOKEN"  # nosec B105  # pragma: allowlist secret
 URL_VAR = "GAC_GATEWAY_URL"
 
 

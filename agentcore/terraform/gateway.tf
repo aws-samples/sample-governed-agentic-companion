@@ -13,6 +13,11 @@
 # GOVERNANCE (Tenet 1/3): this creates a governed TOOL SURFACE, not a deployment of a customer
 # environment. The single target is the read/write-knowledge-only engine; systems-of-record
 # targets stay read-only and are added separately.
+# KICS "IAM Access Analyzer Not Enabled" (K8) fires once per file with any aws_ resource and no
+# analyzer. The analyzer is an account or organization baseline control that a landing zone
+# normally owns; this kit makes it opt-in (enable_access_analyzer, access_analyzer.tf;
+# docs/SECURITY.md SD-8), so the per-file query does not apply to this file.
+# kics-scan disable=e592a0c5-5bdb-414c-9066-5dba7cdea370
 
 locals {
   gateway_enabled = var.deploy_gateway
@@ -42,16 +47,19 @@ data "aws_iam_policy_document" "gateway_assume" {
       variable = "aws:SourceAccount"
       values   = [local.account_id]
     }
+    # Private mode narrows the trust to gateways named "<name_prefix>-gateway-*" (an exact ARN is
+    # impossible: the gateway references this role). Gateway ids observed in AWS examples are
+    # "<name>-<suffix>"; confirmed by post-deploy test 5c. Public mode keeps today's ":*".
     condition {
       test     = "ArnLike"
       variable = "aws:SourceArn"
-      values   = ["arn:aws:bedrock-agentcore:${local.region}:${local.account_id}:*"]
+      values = [local.network_private ? (
+        "arn:aws:bedrock-agentcore:${local.region}:${local.account_id}:gateway/${var.name_prefix}-gateway-*"
+      ) : "arn:aws:bedrock-agentcore:${local.region}:${local.account_id}:*"]
     }
   }
 }
 
-# kics-scan ignore-line: "IAM Access Analyzer Not Enabled" is an account/org baseline control
-# made opt-in here via enable_access_analyzer (access_analyzer.tf) — docs/SECURITY.md SD-8.
 resource "aws_iam_role" "gateway_exec" {
   count              = local.gateway_enabled ? 1 : 0
   name               = "${var.name_prefix}-gateway-exec-role"
@@ -91,12 +99,15 @@ data "aws_iam_policy_document" "gateway_exec_inline" {
   # `bedrock-agentcore-identity!default/oauth2/*`; scope the grant to that prefix (the AWS
   # MCP-server-target IAM example grants the same).
   dynamic "statement" {
-    for_each = local.auth_is_cognito ? [1] : []
+    for_each = local.gateway_outbound_oauth ? [1] : []
     content {
       sid     = "OutboundOauthSecret"
       effect  = "Allow"
       actions = ["secretsmanager:GetSecretValue"]
       resources = [
+        # K3: KICS "Generic Secret" matches the word secret in this IAM resource ARN pattern (the
+        # AgentCore Identity OAuth2 secret path); it is an ARN, not a secret value.
+        # kics-scan ignore-line
         "arn:aws:secretsmanager:${local.region}:${local.account_id}:secret:bedrock-agentcore-identity!default/oauth2/*",
       ]
     }
@@ -159,6 +170,21 @@ resource "aws_bedrockagentcore_gateway" "this" {
     custom_jwt_authorizer {
       discovery_url   = local.jwt_discovery_url
       allowed_clients = local.jwt_allowed_clients
+
+      # Entitlement (cognito.tf): the token's group claim must contain the companion's group.
+      dynamic "custom_claim" {
+        for_each = local.entitlement_enforced ? [1] : []
+        content {
+          inbound_token_claim_name       = local.entitlement_claim["name"]
+          inbound_token_claim_value_type = local.entitlement_claim["value_type"]
+          authorizing_claim_match_value {
+            claim_match_operator = "CONTAINS"
+            claim_match_value {
+              match_value_string = local.entitlement_group
+            }
+          }
+        }
+      }
     }
   }
 
@@ -192,7 +218,8 @@ resource "aws_bedrockagentcore_gateway" "this" {
 # Identity Token Vault — so no separate, hand-managed Secrets Manager secret is needed (see
 # secrets.tf). Created only for the cognito gateway path.
 resource "aws_bedrockagentcore_oauth2_credential_provider" "gateway_m2m" {
-  count                      = local.gateway_enabled && local.auth_is_cognito ? 1 : 0
+  # Public mode only. In private mode the gateway signs with its own role (SigV4).
+  count                      = local.gateway_outbound_oauth ? 1 : 0
   name                       = "${var.name_prefix}-gateway-m2m"
   credential_provider_vendor = "CustomOauth2"
 
@@ -228,8 +255,8 @@ resource "aws_bedrockagentcore_gateway_target" "mcp_engine" {
   }
 
   # Forward the interceptor-injected verified-actor header to the runtime (ADR-0001 Phase 2).
-  # The identity interceptor sets X-Gac-Actor-Sub from the verified JWT; the runtime reads it
-  # as the authoritative builder actor. Only when the interceptor is enabled. (Note: NOT
+  # The identity interceptor sets X-Gac-Actor-Sub from the verified JWT; a fork's runtime reads
+  # it as the authoritative builder actor (the example engine does not read it yet). Only when the interceptor is enabled. (Note: NOT
   # Mcp-Session-Id — that is gateway-managed, not header-propagated.)
   dynamic "metadata_configuration" {
     for_each = local.interceptor_enabled ? [1] : []
@@ -238,10 +265,13 @@ resource "aws_bedrockagentcore_gateway_target" "mcp_engine" {
     }
   }
 
-  # Outbound auth to the runtime: the Cognito M2M client_credentials grant, via the provider.
-  # When not on the cognito path, fall back to the gateway's IAM role (SigV4).
+  # Outbound auth to the runtime:
+  #   public + cognito : the Cognito M2M client_credentials grant, via the provider.
+  #   private          : SigV4 signed with the gateway execution role (service bedrock-agentcore);
+  #                      the MCP runtime's resource policy allows only that role.
+  #   public + entraid : the existing bare gateway IAM role fallback (unchanged).
   dynamic "credential_provider_configuration" {
-    for_each = local.auth_is_cognito ? [1] : []
+    for_each = local.gateway_outbound_oauth ? [1] : []
     content {
       oauth {
         provider_arn = aws_bedrockagentcore_oauth2_credential_provider.gateway_m2m[0].credential_provider_arn
@@ -251,15 +281,93 @@ resource "aws_bedrockagentcore_gateway_target" "mcp_engine" {
     }
   }
   dynamic "credential_provider_configuration" {
-    for_each = local.auth_is_cognito ? [] : [1]
+    for_each = local.mcp_runtime_iam_inbound ? [1] : []
+    content {
+      gateway_iam_role {
+        service = "bedrock-agentcore"
+        region  = local.region
+      }
+    }
+  }
+  dynamic "credential_provider_configuration" {
+    for_each = !local.auth_is_cognito && !local.mcp_runtime_iam_inbound ? [1] : []
     content {
       gateway_iam_role {}
     }
   }
 
   # The runtime's authorizer must already allow the M2M client before the target's tool-fetch
-  # handshake runs, or the connect fails with "Authorization error". Force that ordering.
-  depends_on = [aws_bedrockagentcore_agent_runtime.mcp_runtime]
+  # handshake runs, or the connect fails with "Authorization error". In private mode the gateway
+  # exposes no tools until both the gateway and the MCP runtime resource policies are attached
+  # (zero instances in public mode, so this is a no-op there). In private (SigV4) mode the
+  # gateway exec role's InvokeAgentRuntime grant must exist AND have propagated before the
+  # one-shot tool sync: nothing else orders the target after gateway_exec_inline, and
+  # gateway_invoke_propagation waits for IAM eventual consistency.
+  depends_on = [
+    aws_bedrockagentcore_agent_runtime.mcp_runtime,
+    aws_iam_role_policy.gateway_exec_inline,
+    aws_bedrockagentcore_resource_policy.gateway,
+    aws_bedrockagentcore_resource_policy.mcp_runtime,
+    terraform_data.gateway_invoke_propagation,
+  ]
+}
+
+# IAM is eventually consistent. Gateway target creation runs ONE tool sync and does not retry, so
+# the gateway exec role's InvokeAgentRuntime grant and the MCP runtime resource policy must have
+# propagated first. Without this wait both grants can land about 1 s before the sync and the
+# target is created FAILED ("Authorization error when sending message"). Private (SigV4) path
+# only; zero instances in public mode. terraform_data + local-exec avoids a new provider (the
+# time provider is not pinned); a POSIX shell is already required by build.tf. The sleep re-runs
+# only when either policy changes, which never forces target replacement.
+resource "terraform_data" "gateway_invoke_propagation" {
+  count = local.mcp_runtime_iam_inbound ? 1 : 0
+  triggers_replace = [
+    aws_iam_role_policy.gateway_exec_inline[0].policy,
+    aws_bedrockagentcore_resource_policy.mcp_runtime[0].policy,
+  ]
+
+  provisioner "local-exec" {
+    command = "sleep 30"
+  }
+}
+
+locals {
+  # The MCP tool surface: the tool functions and their signatures live in this file.
+  mcp_tool_surface_hash = filesha1("${local.repo_root}/agentcore/app/mcp_runtime/runtime_mcp_entrypoint.py")
+}
+
+# The gateway target syncs its tool list only when it is created. A new MCP runtime image (or a
+# changed tool surface) leaves the gateway serving the old list ("Unknown tool"). Re-sync after
+# the runtime update and the propagation wait. Runs inside the human-run apply (Tenet 1); the
+# engine role is denied SynchronizeGatewayTargets (iam.tf). Opt out with sync_gateway_tools =
+# false and run the manual command in docs/DEPLOY.md.
+resource "terraform_data" "gateway_tool_sync" {
+  count = local.gateway_enabled && var.sync_gateway_tools ? 1 : 0
+  triggers_replace = [
+    local.mcp_runtime_image_uri,
+    aws_bedrockagentcore_agent_runtime.mcp_runtime.agent_runtime_version,
+    local.mcp_tool_surface_hash,
+  ]
+
+  provisioner "local-exec" {
+    # The apply does not depend on the file's exec bit.
+    interpreter = ["/bin/sh"]
+    command     = "${path.module}/scripts/sync_gateway_target.sh"
+    working_dir = path.module
+    environment = {
+      AWS_REGION     = local.region
+      AWS_PAGER      = ""
+      GATEWAY_ID     = aws_bedrockagentcore_gateway.this[0].gateway_id
+      TARGET_ID      = aws_bedrockagentcore_gateway_target.mcp_engine[0].target_id
+      SETTLE_SECONDS = tostring(var.gateway_sync_settle_seconds)
+    }
+  }
+
+  depends_on = [
+    aws_bedrockagentcore_gateway_target.mcp_engine,
+    aws_bedrockagentcore_agent_runtime.mcp_runtime,
+    terraform_data.gateway_invoke_propagation,
+  ]
 }
 
 locals {

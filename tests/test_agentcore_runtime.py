@@ -49,7 +49,7 @@ class TestMcpRuntimeTools:
         assert "Governance Outcome" in out
 
     def test_tool_registry_exposes_both(self):
-        assert set(mcp_rt.TOOLS) == {"ask_companion", "companion_kb"}
+        assert set(mcp_rt.TOOLS) == {"ask_companion", "companion_kb", "draw_diagram"}
 
     def test_build_app_requires_mcp_sdk_clearly(self):
         # Without the mcp SDK installed, build_app raises a clear, actionable error

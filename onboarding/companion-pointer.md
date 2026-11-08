@@ -1,7 +1,7 @@
 ---
 inclusion: auto
 name: companion-pointer
-description: Routes governed multi-agent requests (platform/infrastructure, security, and any specialist you add) to the Governed Agentic Companion front door installed in this workspace.
+description: Routes governed requests (platform/infrastructure, security, and any specialist you add) to the Governed Agentic Companion front door installed in this workspace.
 ---
 
 # Governed Agentic Companion front door pointer

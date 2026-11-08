@@ -9,8 +9,9 @@ Enforcement (hybrid, honest about where hallucination originates):
     claims a write to a read-only system of record, or leaks secret material is HARD-BLOCKED
     and withheld (the original text is never echoed, so a leaked secret can't ride along).
   - Tenet 4 — No hallucination tolerance, applied to the EXPLORATION (LLM) zone. An answer
-    produced with an LLM that cannot be grounded to the fact bar (< 0.95, or not measured) is
-    BLOCKED, not decorated with a warning.
+    produced with an LLM that cannot be grounded to the fact bar (grounding.fact_threshold,
+    default 0.95, tighten-only), or whose confidence was not measured, is BLOCKED, not
+    decorated with a warning.
   - Tenets 11/12 — first-increment text-layer detectors (bounded egress / bounded resource):
     a fetch-and-execute DIRECTIVE is BLOCKED; descriptive/assessment mentions and self-narrated
     runaway are surfaced as INFO. These are observability signals, never proof of an action.
@@ -30,13 +31,16 @@ import os
 import re
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import List, Optional
+from typing import Any, Dict, List, Optional
 
 from .evidence_gateway import EvidencePacket, packet_validity_reason
 
 logger = logging.getLogger(__name__)
 
+#: Floor and default for the present-as-fact threshold. The live bar is GovernanceGate.fact_threshold,
+#: read from grounding.fact_threshold (tighten-only: configurable upward, never below this floor).
 CONFIDENCE_FACT_THRESHOLD = 0.95
+FACT_THRESHOLD_FLOOR = CONFIDENCE_FACT_THRESHOLD
 
 
 class Severity(str, Enum):
@@ -160,7 +164,7 @@ def _truncate(text: str, limit: int = 120) -> str:
 _CHECKED_TENETS = [
     ("Tenet 1", "T1", "human-owned deployment (no executed deploy/mutation claims)"),
     ("Tenet 3", "T3", "bounded agency (no writes to read-only systems of record)"),
-    ("Tenet 4", "T4", "no hallucination tolerance (grounding ≥ 95% for LLM answers)"),
+    ("Tenet 4", "T4", "no hallucination tolerance (grounding ≥ {bar} for LLM answers)"),
     ("Tenet 6", "T6", "data governance (no secret/credential material in output)"),
     ("Tenet 11", "T11", "bounded egress (no fetch-and-execute of remote content)"),
     ("Tenet 12", "T12", "bounded resource (no self-narrated runaway/unbounded loop)"),
@@ -169,6 +173,16 @@ _CHECKED_TENETS = [
 
 class GovernanceGate:
     """The single, always-on enforcement seam. There is no observe mode."""
+
+    def __init__(self, fact_threshold: Optional[float] = None):
+        """`fact_threshold` overrides `grounding.fact_threshold` from config. Either way it is
+        resolved tighten-only: a value below the 0.95 floor is clamped to the floor."""
+        from .config import load_config, resolve_fact_threshold
+        if fact_threshold is not None:
+            self.fact_threshold = resolve_fact_threshold(
+                {"grounding": {"fact_threshold": fact_threshold}})
+        else:
+            self.fact_threshold = resolve_fact_threshold(load_config())
 
     def enforce(
         self,
@@ -184,6 +198,8 @@ class GovernanceGate:
         evidence: Optional[EvidencePacket] = None,
         stage: Optional[str] = None,
         front_door: str = "engine",
+        footer_lines: Optional[List[str]] = None,
+        audit_extra: Optional[Dict[str, Any]] = None,
     ) -> GateResult:
         """`evidence` is an optional EvidencePacket from the evidence gateway (see
         evidence_gateway.py). It defaults to None, a no-op: with no evidence provider
@@ -191,7 +207,13 @@ class GovernanceGate:
 
         `stage` and `front_door` are audit-only labels (default None/"engine"): they tag the
         action-trail event so a staged-mode step or a non-engine front door (plugin, MCP, hook)
-        is attributable. They never affect enforcement."""
+        is attributable. They never affect enforcement.
+
+        `footer_lines` (design D5.3) are extra footer lines from the diagram specialist. They are
+        rendered only on a passing response, after "Sources" and before "Gate status", and only
+        when each matches the pinned pattern (a mismatch is dropped and logged at WARNING).
+        `audit_extra` adds the D5.3 int/enum keys to the audit event. Neither affects the
+        verdict: the detectors above run on the response text exactly as before."""
         trust_zone = "exploration" if used_llm else "verified"
         sources = sources or []
 
@@ -214,7 +236,7 @@ class GovernanceGate:
             if footer:
                 out_response += self._governance_footer(
                     findings=findings, confidence=confidence, sources=sources,
-                    trust_zone=trust_zone,
+                    trust_zone=trust_zone, extra_lines=_checked_footer_lines(footer_lines),
                 )
 
         result = GateResult(
@@ -233,9 +255,10 @@ class GovernanceGate:
                 findings=[{"tenet": f.tenet, "code": f.code, "severity": f.severity.value}
                           for f in findings],
                 environment=environment, stage=stage, front_door=front_door,
+                extra=audit_extra,
             )
-        except Exception:
-            pass
+        except Exception as e:  # observability only: never changes the verdict
+            logger.debug("audit record skipped (%s)", type(e).__name__)
         # Feedback / evolution loop (Tenet 8). Every work item emits a signal; a candidate
         # learning is staged ONLY when there is a real grounding gap (not blocked, not grounded).
         # Staged for human review+promotion — never silently absorbed. Fail-open; never blocks.
@@ -244,10 +267,10 @@ class GovernanceGate:
             get_feedback().record_work(
                 agent=agent, request=request, trust_zone=trust_zone,
                 confidence=confidence, sources=sources, blocked=blocked,
-                fact_bar=CONFIDENCE_FACT_THRESHOLD,
+                fact_bar=self.fact_threshold,
             )
-        except Exception:
-            pass
+        except Exception as e:  # observability only: never changes the verdict
+            logger.debug("feedback signal skipped (%s)", type(e).__name__)
         return result
 
     # -- block action ------------------------------------------------------------
@@ -268,7 +291,8 @@ class GovernanceGate:
 
     # -- footer ------------------------------------------------------------------
 
-    def _governance_footer(self, *, findings, confidence, sources, trust_zone) -> str:
+    def _governance_footer(self, *, findings, confidence, sources, trust_zone,
+                           extra_lines: Optional[List[str]] = None) -> str:
         codes = {f.code for f in findings}
         lines = ["", "── Governance Outcome ──"]
         zone_label = ("verified (deterministic — grounded by construction)"
@@ -278,6 +302,7 @@ class GovernanceGate:
         lines.append("  Tenets checked:")
         for tenet, prefix, desc in _CHECKED_TENETS:
             flagged = any(c.startswith(prefix + "_") for c in codes)
+            desc = desc.replace("{bar}", f"{self.fact_threshold:.0%}")
             lines.append(f"    {'⚠ FLAG' if flagged else '✓ PASS'}  {tenet} — {desc}")
         if trust_zone == "verified":
             conf = ("grounded by construction (deterministic; no score needed)"
@@ -286,8 +311,8 @@ class GovernanceGate:
         else:
             conf = ("not measured" if confidence is None
                     else f"{confidence:.0%} "
-                         f"({'≥' if confidence >= CONFIDENCE_FACT_THRESHOLD else '<'} "
-                         f"{CONFIDENCE_FACT_THRESHOLD:.0%} fact bar)")
+                         f"({'≥' if confidence >= self.fact_threshold else '<'} "
+                         f"{self.fact_threshold:.0%} fact bar)")
         lines.append(f"  Confidence: {conf}")
         if sources:
             shown = ", ".join(sources[:6])
@@ -295,9 +320,22 @@ class GovernanceGate:
             lines.append(f"  Sources ({len(sources)}): {shown}{more}")
         else:
             lines.append("  Sources: none matched (treat with extra caution)")
+        lines.extend(extra_lines or [])
         lines.append("  Gate status: ✓ PASS")
         lines.append("────────────────────────")
         return "\n".join(lines)
+
+    # -- pure content detectors (no logging, no audit, no feedback) ----------------
+
+    def content_findings(self, text: str) -> List[Finding]:
+        """The text-content detectors for Tenets 1, 3 and 6, in enforce()'s order. Pure: no
+        logging, no audit event, no feedback signal. Used to check a single label or manifest
+        line before it is assembled into a response; enforce() still runs on the full text."""
+        return self._detect_tenet1(text) + self._detect_tenet3(text) + self._detect_tenet6(text)
+
+    def content_findings_t11(self, text: str) -> List[Finding]:
+        """The Tenet 11 text detector alone. Pure, as content_findings."""
+        return self._detect_tenet11(text)
 
     # -- detectors ---------------------------------------------------------------
 
@@ -341,11 +379,11 @@ class GovernanceGate:
     def _detect_tenet4(self, confidence, trust_zone) -> List[Finding]:
         if trust_zone != "exploration":
             return []
-        if confidence is None or confidence < CONFIDENCE_FACT_THRESHOLD:
+        if confidence is None or confidence < self.fact_threshold:
             shown = "not measured" if confidence is None else f"{confidence:.0%}"
             return [Finding("Tenet 4", "T4_UNGROUNDED", Severity.BLOCK,
                 f"LLM-generated answer does not meet the grounding bar (confidence {shown} < "
-                f"{CONFIDENCE_FACT_THRESHOLD:.0%}); no-hallucination-tolerance — human "
+                f"{self.fact_threshold:.0%}); no-hallucination-tolerance — human "
                 "verification required.")]
         return []
 
@@ -433,6 +471,22 @@ class GovernanceGate:
 
 # --- Shared seam: one process-wide gate; enforcement is unconditional ----------
 
+def _checked_footer_lines(lines: Optional[List[str]]) -> List[str]:
+    """Keep the diagram footer lines that match the pinned D5.3 pattern; drop and WARN on the
+    rest (a template bug must show up in the logs)."""
+    if not lines:
+        return []
+    from .diagram.footer import valid
+    out: List[str] = []
+    for line in lines:
+        if valid(line):
+            out.append(line)
+        else:
+            logger.warning("[GovernanceGate] dropped a diagram footer line that does not match "
+                           "the pinned pattern")
+    return out
+
+
 _shared_gate: Optional["GovernanceGate"] = None
 
 
@@ -448,13 +502,16 @@ def reset_gate() -> None:
     _shared_gate = None
 
 
-def gate_output(response: str, *, agent: str, request: str = "", environment: str = "dev",
-                agent_obj: object = None, used_llm: Optional[bool] = None,
-                confidence: Optional[float] = None,
-                sources: Optional[List[str]] = None, footer: bool = True,
-                evidence: Optional[EvidencePacket] = None,
-                stage: Optional[str] = None, front_door: str = "engine") -> str:
-    """The ONE function every response path calls, so 'everything is gated' is literally true.
+def gate_output_result(response: str, *, agent: str, request: str = "", environment: str = "dev",
+                       agent_obj: object = None, used_llm: Optional[bool] = None,
+                       confidence: Optional[float] = None,
+                       sources: Optional[List[str]] = None, footer: bool = True,
+                       evidence: Optional[EvidencePacket] = None,
+                       stage: Optional[str] = None, front_door: str = "engine",
+                       footer_lines: Optional[List[str]] = None,
+                       audit_extra: Optional[Dict[str, Any]] = None) -> GateResult:
+    """As gate_output, but returns the full GateResult (so a caller can tell whether the
+    response was blocked). Enforcement is identical: gate_output is this function's .response.
 
     `evidence` is an optional EvidencePacket from the evidence gateway; it defaults to None
     (a no-op that preserves existing behavior). GUARDRAIL: the packet is passed to the gate's
@@ -476,4 +533,22 @@ def gate_output(response: str, *, agent: str, request: str = "", environment: st
         response, agent=agent, request=request, environment=environment,
         confidence=confidence, used_llm=used_llm, sources=sources, footer=footer,
         evidence=evidence, stage=stage, front_door=front_door,
+        footer_lines=footer_lines, audit_extra=audit_extra,
+    )
+
+
+def gate_output(response: str, *, agent: str, request: str = "", environment: str = "dev",
+                agent_obj: object = None, used_llm: Optional[bool] = None,
+                confidence: Optional[float] = None,
+                sources: Optional[List[str]] = None, footer: bool = True,
+                evidence: Optional[EvidencePacket] = None,
+                stage: Optional[str] = None, front_door: str = "engine") -> str:
+    """The ONE function every response path calls, so 'everything is gated' is literally true.
+
+    Thin wrapper over gate_output_result (same parameters, same enforcement); see there for
+    the evidence guardrail."""
+    return gate_output_result(
+        response, agent=agent, request=request, environment=environment,
+        agent_obj=agent_obj, used_llm=used_llm, confidence=confidence, sources=sources,
+        footer=footer, evidence=evidence, stage=stage, front_door=front_door,
     ).response

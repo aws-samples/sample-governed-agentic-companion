@@ -37,7 +37,7 @@ seeded  ──▶  cultivating  ──▶  grounded  ──▶  productionized  
 | **seeded** | Just forked. Governance floor live; domain near-empty (example specialists + generic KB). | Safe from birth, but mostly declines in-domain questions — it has little to ground on. Correct starting state. |
 | **cultivating** | Real specialists and seed knowledge dropped in; the learning loop is **on** and actively staging candidates. | Answers some in-domain questions grounded; many still decline. Feedback candidates accumulating; humans promoting regularly. This is the *active growth* stage. |
 | **grounded** | Domain coverage broad enough that in-domain questions are usually answered grounded, not declined. | Grounding rate and coverage clear the readiness bar (below). The expert is *real* but not yet ratified for production consumption. |
-| **productionized** | A human has ratified the instance against the readiness bar. Builders consume it as the project's SME. | The promise is met: a trustworthy, in-domain expert, safe by construction, human-in-the-loop. |
+| **productionized** | A human has ratified the instance against the readiness bar. Builders consume it as the project's SME. | The promise is met: a trusted, in-domain expert, governed and human-in-the-loop. |
 | **sustaining** | In production, still learning. Monitors for knowledge **decay** and domain drift. | Keeps compounding; demotes to `cultivating` if readiness metrics decay below the bar (knowledge gone stale, domain shifted). |
 
 Design notes, mirroring `leaf-status`:
@@ -57,11 +57,14 @@ Design notes, mirroring `leaf-status`:
 Trust-to-productionize must be *measurable*, built from mechanisms GAC already has — not a new
 subjective judgment. Candidate metrics, all derivable from the existing audit trail
 (`agents/audit.py`), feedback loop (`agents/feedback.py`), and per-answer grounding
-(`assess_confidence_detail` in `agents/base_agent.py`):
+(`assess_confidence_detail` in `agents/base_agent.py`). Candidates stage in
+`.feedback/candidates.jsonl` after `scrub_or_reject`; `promote` records the human decision; a human
+applies the entry to the Tier B overlay. No freshness ledger is built. The constitution allows a
+future source-derived tier; the kit does not build one.
 
 | Metric | Source today | Why it gates productionization |
 |---|---|---|
-| **In-domain grounding rate** | audit trail: share of in-domain answers that cleared the 0.95 fact bar with cited sources | The expert must actually *know* its field, not decline it. |
+| **In-domain grounding rate** | audit trail: share of passing answers with at least one knowledge source (verified-zone with a source, or exploration-zone at or above `grounding.fact_threshold`) | The expert must actually *know* its field, not decline it. |
 | **In-domain decline rate** | feedback candidates vs. answered | A high decline rate means the seed hasn't grown enough yet. |
 | **Domain coverage** | KB keys populated across the field's topic map | Breadth of expertise, not just depth in a corner. |
 | **Promotion health** | feedback: candidates reviewed/promoted vs. piling up unreviewed | Proves the *learning loop itself* is alive, not just the KB. |
@@ -92,7 +95,7 @@ up**, and it widens the becoming from one instance to a fleet:
 - The spine lets one matured expert's knowledge become a **queryable, citeable grounding source**
   for other leaves (query-not-copy), so a new seed in a related field starts further up the
   ladder instead of from bare `seeded`. That is "self-learning" widened across a program.
-- The spine never relaxes any leaf's gate. Each leaf stays safe-by-construction and
+- The spine never relaxes any leaf's gate. Each leaf keeps its own gate and stays
   human-in-the-loop; the spine only widens the *radius* of grounded knowledge.
 
 ## What this implies for the roadmap (intent-aligned, not feature-count)

@@ -91,3 +91,57 @@ class TestFooter:
         g = GovernanceGate()
         r = g.enforce("I have deployed to prod.", agent="x")
         assert r.blocked
+
+
+class TestDiagramFooterLines:
+    """Diagram footer lines (design D5.3): pattern-checked, PASS only, after Sources and before
+    Gate status; a mismatch is dropped and logged at WARNING; prose answers are unchanged."""
+
+    LINES = ["  Diagram planner: deterministic",
+             "  Diagram facts: 7 included (7 selected, 0 added by closure), 0 excluded, "
+             "0 unknown ids",
+             "  Diagram views: 2 (private-request-path, kb-ingestion), 0 context elements",
+             "  Diagram source: knowledge base, not the live deployment"]
+
+    def test_lines_render_between_sources_and_status(self, gate):
+        r = gate.enforce("[diagram] ok", agent="diagram", sources=["s"],
+                         footer_lines=self.LINES)
+        body = r.response.split("\n")
+        i = body.index("  Sources (1): s")
+        assert body[i + 1:i + 5] == self.LINES and body[i + 5] == "  Gate status: ✓ PASS"
+
+    def test_mismatch_dropped_with_warning(self, gate, caplog):
+        bad = ["  Diagram planner: deterministic; rm -rf", "  Other: x", "Diagram views: 1"]
+        with caplog.at_level("WARNING", logger="agents.governance_gate"):
+            r = gate.enforce("[diagram] ok", agent="diagram", footer_lines=bad + self.LINES[:1])
+        assert "rm -rf" not in r.response and "Other: x" not in r.response
+        assert self.LINES[0] in r.response
+        assert sum("does not match the pinned pattern" in m for m in caplog.messages) == 3
+
+    def test_lines_never_on_a_block(self, gate):
+        r = gate.enforce("I have deployed the stack.", agent="diagram", footer_lines=self.LINES)
+        assert r.blocked and "Diagram planner" not in r.response
+
+    def test_prose_unchanged_without_lines(self, gate):
+        a = gate.enforce("A plain answer.", agent="platform", sources=["x"]).response
+        b = gate.enforce("A plain answer.", agent="platform", sources=["x"],
+                         footer_lines=None).response
+        assert a == b and "Diagram" not in a
+
+    def test_audit_extra_is_filtered(self, tmp_path, monkeypatch, gate):
+        import json
+        from agents.audit import reset_audit
+        monkeypatch.setenv("GAC_AUDIT_PATH", str(tmp_path / "trail.jsonl"))
+        monkeypatch.delenv("GAC_AUDIT_DISABLED", raising=False)
+        reset_audit()
+        try:
+            gate.enforce("[diagram] ok", agent="diagram",
+                         audit_extra={"planner": "deterministic", "views": 2, "included": True,
+                                      "label": "free text", "fallback": "Bad Value"})
+            ev = json.loads((tmp_path / "trail.jsonl").read_text().splitlines()[-1])
+            assert ev["extra"] == {"planner": "deterministic", "views": 2}
+            gate.enforce("plain", agent="platform")
+            ev = json.loads((tmp_path / "trail.jsonl").read_text().splitlines()[-1])
+            assert "extra" not in ev
+        finally:
+            reset_audit()

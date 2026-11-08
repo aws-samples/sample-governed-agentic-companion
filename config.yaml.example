@@ -1,7 +1,7 @@
 # Copy to config.yaml (gitignored) and adjust. Defaults are deterministic — no AWS, no LLM.
 system:
   name: "governed-agentic-companion"
-  version: "2.0.0"
+  version: "3.4.1"
 
 # Execution tiers. Tier 1 (deterministic) always works. Tier 2/3 are opt-in.
 llm:
@@ -16,7 +16,8 @@ llm:
     circuit_breaker: true   # degrade to deterministic under sustained cloud failure
 
 # Confidence bar for presenting LLM output as fact (Tenet 4). Below this, exploration-zone
-# answers are BLOCKED by the gate.
+# answers are BLOCKED by the gate. Configurable upward only (tighten-only): values below 0.95
+# are clamped to 0.95; invalid values fall back to 0.95 (agents/config.py).
 grounding:
   fact_threshold: 0.95
 
@@ -39,3 +40,27 @@ knowledge:
   #   bucket: "<kb-bucket>"        # bucket name embeds the account id — keep out of git
   #   overlay_key: "kb/curated/overlay.json"
   #   region: "<region>"
+
+# Diagram specialist (registered by default). Describe-only, LLM-free. Needs the AWS Architecture
+# Icons staged at image build (docs/DEPLOY.md); without them it declines honestly. Limits can be
+# lowered, never raised above the coded ceilings (Tenet 12).
+diagram:
+  enabled: true
+  max_nodes: 24
+  max_edges: 40
+  max_groups: 12
+  png_scale: 2                 # 1 or 2
+  quality_pass_score: 85       # 85..100 (tighten-only)
+  max_layout_attempts: 3       # 1..3
+  render_timeout_seconds: 20   # 1..20
+  max_artifact_bytes: {drawio: 2097152, svg: 1572864, png: 1048576, report: 262144}
+  max_payload_bytes: 4194304   # measured on the serialized wire result (all views together)
+  max_views: 4                 # 1..4 (tighten-only)
+  planner:
+    mode: "deterministic"      # deterministic | bedrock (opt-in; needs a guardrail)
+    # model_id: "<bedrock-model-or-inference-profile-id>"
+    # region: "<region>"
+    # guardrail_id: "<guardrail-id>"     # or GAC_GUARDRAIL_ID
+    # guardrail_version: "DRAFT"
+    max_tokens: 1024           # 256..1024
+    timeout_seconds: 15        # 3..15

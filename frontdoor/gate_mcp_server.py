@@ -68,7 +68,7 @@ def main():
         except ImportError as e:
             raise SystemExit(
                 "The MCP SDK is not installed in this environment. Install it:\n"
-                "  pip install 'mcp>=1.28.0,<2'\n"
+                "  pip install -r requirements-frontdoor.txt\n"
                 f"(import error: {e})"
             )
 

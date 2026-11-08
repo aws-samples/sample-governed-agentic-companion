@@ -1,0 +1,20 @@
+# Build context for both runtime images (docker build ... -f agentcore/app/<face>/Dockerfile <repo root>).
+# Keep local state, secrets and caches out of the context. Do NOT exclude agentcore/diagram-icons/:
+# the image build reads the deployer-staged AWS Architecture Icons zip from there.
+.git
+.venv
+outputs
+.audit
+.feedback
+.plans
+.evidence
+.diagram-assets
+**/.terraform
+**/*.tfstate*
+**/terraform.tfvars
+**/backend.tf
+tf.plan
+**/__pycache__
+.env*
+*.pem
+*.key

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # YAML validation — parses every tracked *.yaml/*.yml file and fails on any that
-# does not parse. Used by CI (.gitlab-ci.yml) and runnable by hand:
+# does not parse. Used by CI (.github/workflows/ci.yml) and runnable by hand:
 #   ./scripts/validate_yaml.sh
 #
 # Uses the project's Python + PyYAML. Exit 0 = all valid, Exit 1 = a parse error.

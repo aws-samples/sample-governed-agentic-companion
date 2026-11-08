@@ -104,3 +104,8 @@ if ($Parent -eq $RepoRoot) {
 Write-Info ""
 Write-Info "==> Done. Add the $RepoName folder to your Kiro workspace and pick @companion-orchestrator,"
 Write-Info "    or in Claude Code install the plugin from plugin\ (the CLAUDE.md block routes requests)."
+Write-Info "    Private mode (default): the gateway and runtime accept requests only through your VPC"
+Write-Info "    endpoints; from other networks the names still resolve and requests get HTTP 403."
+Write-Info "    Connect over your VPN/Direct Connect path (with DNS forwarding to a Route 53 Resolver"
+Write-Info "    inbound endpoint) or from an in-VPC desktop. Token sign-in to Cognito still uses public"
+Write-Info "    Cognito endpoints."

@@ -43,17 +43,17 @@ class TestProvider:
 
 class TestTokenHelper:
     def test_upsert_replaces_and_refuses_quote(self):
-        out = gt._upsert("export GAC_GATEWAY_TOKEN='old'\nexport X='keep'\n",
+        out = gt._upsert("export GAC_GATEWAY_TOKEN='old'\nexport X='keep'\n",  # pragma: allowlist secret
                          "GAC_GATEWAY_TOKEN", "new")
         assert out.count("GAC_GATEWAY_TOKEN=") == 1
-        assert "export GAC_GATEWAY_TOKEN='new'" in out and "export X='keep'" in out
+        assert "export GAC_GATEWAY_TOKEN='new'" in out and "export X='keep'" in out  # pragma: allowlist secret
         with pytest.raises(ValueError):
             gt._upsert("", "GAC_GATEWAY_TOKEN", "ab'cd")
 
     def test_write_env_0600(self, tmp_path):
         p = tmp_path / ".env"
         gt.write_env_token("jwt", p)
-        assert "export GAC_GATEWAY_TOKEN='jwt'" in p.read_text()
+        assert "export GAC_GATEWAY_TOKEN='jwt'" in p.read_text()  # pragma: allowlist secret
         assert stat.S_IMODE(p.stat().st_mode) == 0o600
 
     def test_print_emits_only_token(self, monkeypatch):

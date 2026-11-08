@@ -98,8 +98,18 @@ class AuditTrail:
                     confidence: Optional[float], sources: Optional[List[str]],
                     blocked: bool, findings: Optional[List[Dict[str, Any]]] = None,
                     environment: str = "dev", stage: Optional[str] = None,
-                    front_door: str = "engine") -> Optional[Dict[str, Any]]:
-        """Record a gate decision — the core action event. Stores metadata only (no raw text)."""
+                    front_door: str = "engine",
+                    extra: Optional[Dict[str, Any]] = None) -> Optional[Dict[str, Any]]:
+        """Record a gate decision — the core action event. Stores metadata only (no raw text).
+
+        `extra` (the diagram planner metadata, design D5.3) is filtered to the allowed keys with
+        int or enum values; anything else is dropped. Absent or empty, the event is unchanged."""
+        fields: Dict[str, Any] = {}
+        if extra:
+            from .diagram.footer import audit_extra
+            kept = audit_extra(extra)
+            if kept:
+                fields["extra"] = kept
         return self.record(
             "gate_decision",
             front_door=front_door,
@@ -113,6 +123,7 @@ class AuditTrail:
             findings=findings or [],
             request=_safe_text_metadata(request),
             response=_safe_text_metadata(response),
+            **fields,
         )
 
     def tail(self, n: int = 20) -> List[Dict[str, Any]]:
@@ -125,7 +136,8 @@ class AuditTrail:
             for ln in lines[-n:]:
                 try:
                     out.append(json.loads(ln))
-                except Exception:
+                except Exception as e:  # a torn or foreign line is skipped, not fatal
+                    logger.debug("audit: skip unreadable line (%s)", type(e).__name__)
                     continue
             return out
         except Exception:

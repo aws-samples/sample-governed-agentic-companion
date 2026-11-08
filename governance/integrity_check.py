@@ -1,6 +1,7 @@
 """Governance integrity — verify PRINCIPLES.md has not been tampered with.
 
-The constitution is SHA-256 baselined in governance/integrity.yaml and checked at startup.
+The constitution is SHA-256 baselined in governance/integrity.yaml and checked by
+`./run.sh status` and by the unit test suite (run in CI on every push).
 A mismatch without a deliberate re-baseline is flagged. This is Tenet 9 (Governance Integrity):
 the principles are only "immutable" if tampering is DETECTABLE and change is DELIBERATE.
 """

@@ -1,0 +1,3 @@
+# Fixture mode: overlay = add these keys to the shipped KB and keep the peers; replace (the
+# default) = these keys are the whole diagram KB and the peers are unbound.
+mode: overlay

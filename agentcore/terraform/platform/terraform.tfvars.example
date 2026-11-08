@@ -1,0 +1,27 @@
+# Platform (shared layer) tfvars. Copy to terraform.tfvars (GITIGNORED) and replace every
+# placeholder. Nothing here is a secret or a customer identifier.
+
+aws_region        = "<REGION>"
+state_bucket_name = "companion-tfstate-<ACCOUNT_ID>-<REGION>" # must be globally unique
+lock_table_name   = "companion-tf-locks"
+
+# Neutral shared-pool prefix (pool <prefix>-pool, domain <prefix>-<account>). Customer-agnostic.
+identity_name_prefix = "companion"
+
+# One entitlement group per companion (<key>-users). Companion names only.
+apps = {
+  gac   = "Governed Agentic Companion"
+  other = "<Another companion>"
+}
+
+# Optional provider default_tags. Leave empty when adopting an existing platform state.
+# tags = { project = "companion-platform", managed-by = "terraform" }
+
+# ---- Optional ONE shared private network (off by default) ----
+# Several companions then consume it (companion_consumer_inputs output). A dedicated companion
+# network is still the default; see docs/SECURITY.md SD-27 before sharing one.
+enable_private_network = false
+# network_vpc_cidr       = "10.90.0.0/16"
+# private_client_cidrs   = ["10.0.0.0/16"] # placeholder: replace with your VPN / Direct Connect ranges
+# kb_bucket_arn_patterns = ["arn:aws:s3:::<exact KB bucket name>"] # narrower than the default pattern
+# enable_resolver_inbound_endpoint = false  # Route 53 Resolver inbound endpoint for on-prem DNS

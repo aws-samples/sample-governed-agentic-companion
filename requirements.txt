@@ -3,11 +3,26 @@
 # PATCHED release; bump deliberately after checking advisories (do not loosen to a range).
 pyyaml==6.0.3
 pytest==9.1.1          # dev/test only
+# dev/test only: the in-process MCP runtime tests (tests/test_mcp_runtime_stateless.py) and the
+# static Terraform tests. mcp needs Python >= 3.10, so on Python 3.9 it is skipped and those
+# MCP tests skip too. On 3.10+ mcp also pulls its transitive tree (pydantic, starlette, uvicorn,
+# sse-starlette, pyjwt[crypto], python-multipart, anyio) at pip-resolved versions; the runtime
+# images keep their own full pin sets.
+mcp==1.30.0; python_version >= "3.10"    # dev/test only: same pin as agentcore/app/mcp_runtime/requirements.txt
+httpx==0.28.1                            # dev/test only: ASGI test transport (pinned explicitly)
+python-hcl2==8.1.4                       # dev/test only: static Terraform tests (Python >= 3.8)
+defusedxml==0.7.1                        # local icon catalog (./run.sh diagram-assets), image build stage, tests
 
-# Optional — only needed when you turn on a cloud path or a front door. Pin to a current
+# Front doors (./run.sh diagram-fetch, the stdio bridge, the gate MCP server): install the exact
+# pins in requirements-frontdoor.txt (pip install -r requirements-frontdoor.txt). A missing
+# package there gives that one install line and exit 2.
+# Optional — only needed when you turn on a cloud path. Pin to a current
 # PATCHED release when you enable one (these are known-good floors; verify latest advisories):
-#   boto3==1.35.0        # S3 KB overlay, Bedrock (Tier 3), AgentCore
-#   mcp==2.2.0           # the MCP front doors (local stdio bridge / gateway); 2.x carries the DoS/DNS-rebind fixes
+#   boto3==1.43.111      # S3 KB overlay, Bedrock (Tier 3), AgentCore (same pin as both runtime images; Python >= 3.10)
+#   mcp==1.30.0          # the MCP front doors (local stdio bridge / gateway); must stay <2 for bedrock-agentcore 1.18.1
+#                        # frontdoor/diagram_relay.py imports the PRIVATE mcp.shared._httpx_utils.create_mcp_http_client;
+#                        # on a bump, re-check it (tests/test_diagram_fetch_errors.py::test_production_factory_installs_error_body_hook)
 #   PyJWT[crypto]==2.15.1 # closes the 2.13.0 CVE family (incl. the crit CVE-2026-102268 PEM auth-bypass; fixed 2.14.0)
 #   requests==2.34.2
 #   jinja2==3.1.6
+#   resvg-py==0.5.0      # optional local PNG for ./run.sh diagram (Python >= 3.10); the runtime images pin it

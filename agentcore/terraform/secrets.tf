@@ -20,5 +20,5 @@
 locals {
   # The gateway path does not consume a Secrets Manager ARN (it uses the OAuth2 credential
   # provider). This local is the BYO override only: a fork-supplied existing secret ARN, else "".
-  effective_m2m_secret_arn = var.gateway_m2m_secret_arn
+  effective_m2m_secret_arn = var.gateway_m2m_secret_arn # pragma: allowlist secret
 }

@@ -4,6 +4,11 @@
 # gap: if each runtime gets its own synthesized role, one of them can end up WITHOUT S3 read,
 # so the Tier-B overlay read fails AccessDenied. Here the S3 KB read+write grant is part of the
 # role by construction — no out-of-band `put-role-policy` step, no role churn to chase.
+# KICS "IAM Access Analyzer Not Enabled" (K8) fires once per file with any aws_ resource and no
+# analyzer. The analyzer is an account or organization baseline control that a landing zone
+# normally owns; this kit makes it opt-in (enable_access_analyzer, access_analyzer.tf;
+# docs/SECURITY.md SD-8), so the per-file query does not apply to this file.
+# kics-scan disable=e592a0c5-5bdb-414c-9066-5dba7cdea370
 
 data "aws_iam_policy_document" "exec_assume" {
   statement {
@@ -30,8 +35,6 @@ data "aws_iam_policy_document" "exec_assume" {
   }
 }
 
-# kics-scan ignore-line: "IAM Access Analyzer Not Enabled" is an account/org baseline control
-# made opt-in here via enable_access_analyzer (access_analyzer.tf) — docs/SECURITY.md SD-8.
 resource "aws_iam_role" "runtime_exec" {
   name               = "${var.name_prefix}-runtime-exec-role"
   assume_role_policy = data.aws_iam_policy_document.exec_assume.json
@@ -140,8 +143,7 @@ data "aws_iam_policy_document" "runtime_exec_inline" {
     ]
   }
 
-  # --- S3 KB read (self-learning store + curated overlay) — the durable fix ---
-  # kics-scan ignore-line: reviewed FALSE POSITIVE for "IAM policy allows for data exfiltration".
+  # --- S3 KB read (curated overlay + the kb/ prefix reserved for a fork's own knowledge tier) — the durable fix ---
   # s3:GetObject here is resource-scoped to a SINGLE bucket + the kb/ prefix (not "*"), so it
   # cannot retrieve arbitrary data — it is the least-privilege read the runtime needs for the KB.
   statement {
@@ -151,7 +153,7 @@ data "aws_iam_policy_document" "runtime_exec_inline" {
     resources = ["${aws_s3_bucket.kb.arn}/${var.kb_prefix}/*"]
   }
 
-  # --- S3 KB write (the self-learning store persists learnings/candidates/freshness) ---
+  # --- S3 KB write (the kb/ prefix is reserved for a fork's own knowledge tier; the example engine writes nothing here) ---
   statement {
     sid       = "KBObjectWrite"
     effect    = "Allow"
@@ -225,6 +227,79 @@ data "aws_iam_policy_document" "runtime_exec_inline" {
         var.create_bedrock_guardrail ? one(aws_bedrock_guardrail.this[*].guardrail_arn) : "arn:aws:bedrock:${local.region}:${local.account_id}:guardrail/${var.guardrail_id}",
       ]
     }
+  }
+
+  # --- Opt-in Bedrock diagram planner (D11.4; off by default) ---
+  # The planner's Converse call carries a guardrailConfig, so the role applies that guardrail.
+  dynamic "statement" {
+    for_each = var.diagram_planner == "bedrock" ? [1] : []
+    content {
+      sid     = "DiagramPlannerGuardrail"
+      effect  = "Allow"
+      actions = ["bedrock:ApplyGuardrail"]
+      resources = [
+        var.create_bedrock_guardrail ? one(aws_bedrock_guardrail.this[*].guardrail_arn) : "arn:aws:bedrock:${local.region}:${local.account_id}:guardrail/${var.guardrail_id}",
+      ]
+    }
+  }
+  # A cross-Region inference profile routes to foundation models in other Regions. Granted only
+  # for the listed Regions, and only through an inference profile of this account and Region.
+  dynamic "statement" {
+    for_each = var.diagram_planner == "bedrock" && length(var.diagram_planner_model_regions) > 0 ? [1] : []
+    content {
+      sid       = "DiagramPlannerCrossRegionModels"
+      effect    = "Allow"
+      actions   = ["bedrock:InvokeModel"]
+      resources = [for r in var.diagram_planner_model_regions : "arn:aws:bedrock:${r}::foundation-model/*"]
+      condition {
+        test     = "StringLike"
+        variable = "bedrock:InferenceProfileArn"
+        values   = ["arn:aws:bedrock:${local.region}:${local.account_id}:inference-profile/*"]
+      }
+    }
+  }
+
+  # --- Both modes: the runtime role cannot change, bypass or tear down its boundary ---
+  # Explicit Deny (wins over the bedrock-agentcore:* Allow in BedrockAgentCoreFullAccess) on the
+  # control-plane calls that could remove the resource policies, switch network mode or
+  # authorizer (and so drop the entitlement claim rule), create a new public runtime/endpoint/
+  # gateway/harness/code interpreter/browser, retarget or re-sync the gateway, reconfigure Memory,
+  # or delete the gateway, its target, a runtime, a runtime endpoint or Memory. Resource "*" only
+  # widens what is refused (Create actions have no ARN yet). Names from the Service Authorization
+  # Reference:
+  # https://docs.aws.amazon.com/service-authorization/latest/reference/list_bedrock-agentcore.html
+  # The kit's runtime code calls no control-plane action, and Terraform runs as the deployer
+  # (a different principal), so apply/destroy and the human-run tool re-sync are unaffected.
+  # Applies in public mode too (docs/SECURITY.md SD-21).
+  statement {
+    sid    = "DenyBoundarySelfModification"
+    effect = "Deny"
+    actions = [
+      "bedrock-agentcore:PutResourcePolicy",
+      "bedrock-agentcore:DeleteResourcePolicy",
+      "bedrock-agentcore:CreateAgentRuntime",
+      "bedrock-agentcore:UpdateAgentRuntime",
+      "bedrock-agentcore:CreateAgentRuntimeEndpoint",
+      "bedrock-agentcore:UpdateAgentRuntimeEndpoint",
+      "bedrock-agentcore:CreateGateway",
+      "bedrock-agentcore:UpdateGateway",
+      "bedrock-agentcore:CreateGatewayTarget",
+      "bedrock-agentcore:UpdateGatewayTarget",
+      "bedrock-agentcore:UpdateMemory",
+      "bedrock-agentcore:CreateHarness",
+      "bedrock-agentcore:UpdateHarness",
+      "bedrock-agentcore:CreateHarnessEndpoint",
+      "bedrock-agentcore:UpdateHarnessEndpoint",
+      "bedrock-agentcore:CreateCodeInterpreter",
+      "bedrock-agentcore:CreateBrowser",
+      "bedrock-agentcore:SynchronizeGatewayTargets",
+      "bedrock-agentcore:DeleteGateway",
+      "bedrock-agentcore:DeleteGatewayTarget",
+      "bedrock-agentcore:DeleteAgentRuntime",
+      "bedrock-agentcore:DeleteAgentRuntimeEndpoint",
+      "bedrock-agentcore:DeleteMemory",
+    ]
+    resources = ["*"]
   }
 
   # NOTE: no Secrets Manager read grant for a gateway M2M secret. The gateway authenticates its

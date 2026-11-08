@@ -1,7 +1,7 @@
 ---
 name: governed-agentic-companion
 description: >
-  A governed, reusable multi-agent companion. An orchestrator routes each request to a
+  A governed, reusable domain-knowledge companion. An orchestrator routes each request to a
   specialist and every response passes an always-on Governance Gate: human-owned deployment
   in every environment, autonomous grounded review, and read-only access to all systems of
   record. Fork per engagement and replace the example specialists + knowledge with your own.
@@ -30,6 +30,7 @@ environment (see `PRINCIPLES.md`, Tenet 1).
 | `companion-orchestrator` | Entry point. Classifies the request, routes to one specialist, presents the gated result. |
 | `companion-platform` | Example: platform/infrastructure topology, environments, runtime, scaling, regions. |
 | `companion-security` | Example: secrets handling, auth/identity, TLS/mTLS, egress, permissions, encryption. |
+| `companion-diagram` | Draws an AWS architecture diagram of a KB topic through the local `companion-files` bridge, which saves the verified `.drawio`, `.svg`, `.png` and report files under your workspace. |
 
 > `companion-platform` and `companion-security` are EXAMPLE specialists (they mirror the
 > engine's `agents/specialists/`). Replace them with your own domain specialists when you fork.
@@ -40,7 +41,8 @@ Grounding comes from the tiered YAML knowledge base (`knowledge/`):
 
 - `tier_a/platform`, `tier_a/security` — locked, high-trust domain knowledge.
 - `tier_b/…` — lower-velocity or engagement-specific knowledge you add.
-- `PRINCIPLES.yaml` — the governing constitution, integrity-verified at startup.
+- `PRINCIPLES.yaml`: the machine-readable threat model and enforcement roadmap. The constitution
+  is `PRINCIPLES.md`, integrity-verified by `./run.sh status` and by the unit test suite (run in CI on every push).
 
 Every factual claim traces to one of these files or a read-only system of record.
 

@@ -1,0 +1,51 @@
+# Diagram vocabulary (example). The deterministic natural-language planner reads it to turn a
+# request into terms and a scope. A fork adds entries in knowledge/tier_b/diagram/vocabulary.yaml
+# (Tier-A wins on a clash). Every key and value: lowercase letters, digits, spaces and hyphens,
+# at most 32 characters. Generic, customer-agnostic content only.
+summary: "Example diagram vocabulary: synonyms, scope words, flow tags and roles."
+topology_note: "The example knowledge describes the kit's private default topology."
+synonyms:            # phrase -> canonical term; both sides stemmed at load
+  kb: knowledge base
+  pvt: private
+  gw: gateway
+  idp: cognito
+  sign in: cognito
+  genai: bedrock
+  mem: memory
+ignore: [gac, companion, our, my, the, a, an, of, to, in, "on", at, it, its, is, do, does, they,
+         them, their, we, us, please, architecture, diagram, draw, show, picture, system, me, flow,
+         give, who, whom, use, uses, used, using, authenticate, authenticates, authenticated,
+         work, works, get, gets, see, tell, explain, help, want, need, can, could, would, all,
+         any, some, also]
+scopes:              # phrase -> scope; matched on the unstemmed request, longest first
+  end to end: end-to-end
+  e2e: end-to-end
+  overview: end-to-end
+  everything: end-to-end
+  whole: end-to-end
+  full: end-to-end
+  security boundaries: security
+  trust boundaries: security
+  boundaries: security
+  data flow: path
+  reaches: path
+  reach: path
+  path: path
+  talks to: neighbourhood-in
+  talk to: neighbourhood-in
+  calls: neighbourhood-in
+  depend on: neighbourhood-out
+  depends on: neighbourhood-out
+  dependencies: neighbourhood-out
+  connect to: neighbourhood-out
+  connects to: neighbourhood-out
+  get written: path-in
+  gets written: path-in
+  written: path-in
+flow_order: [request, gateway, storage, identity, ai, egress]
+roles:
+  transit_tags: [endpoint, network]     # nodes a neighbourhood walk passes through
+  connector_tags: [egress]              # edges admissible in every walk (generic plumbing)
+  security_tags: [identity, security, encryption]
+  entry_tags: [client, user]            # path sources when only one anchor is named
+  provider_tags: [storage]              # incoming edges that are a dependency (data it reads)

@@ -21,7 +21,7 @@ def _secret_inputs():
     client_secret = "abcd" + "1234" + "efgh" + "5678"    # client_secret= value
     conn_pw = "S3cret" + "Pw0rd"                          # password in a connection string
     pem_header = "-----BEGIN " + "RSA" + " PRIVATE" + " KEY" + "-----"  # PEM header marker only
-    api_key = "sk-" + "abcdef123456ghijkl"               # api key value
+    api_key = "sk-" + "abcdef123456ghijkl"               # api key value  # pragma: allowlist secret
     jwt = ".".join(["eyJ" + "hbGciOiJodqweqwe", "eyJ" + "zdWIiOiIxMjM0NTY", "SflKxwRJSMeKKF2QT"])
     return {
         "aws_key": f"set {aws_key} as the id",
@@ -117,5 +117,5 @@ class TestReDoSBounds:
         assert r.ok is True
 
     def test_secret_still_detected_after_bounding(self):
-        aws_key = "AK" + "IA" + "1234567890ABCDEF"
+        aws_key = "AK" + "IA" + "1234567890ABCDEF"  # pragma: allowlist secret
         assert scrub_or_reject(aws_key, stage="t").rejected

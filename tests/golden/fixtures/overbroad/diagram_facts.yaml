@@ -1,0 +1,77 @@
+# Test fixture (golden row 20): an over-broad fork KB, 40 nodes in 8 flows of 5 nodes,
+# no presets. Loaded as tier_b/diagram/diagram_facts by tests/diagram_fixtures.py.
+# Generic, invented content.
+summary: "Fixture: an over-broad fork with 8 flows and no presets."
+diagram_facts:
+  - {kind: node, id: svc-a1, label: "Service A1", icon: AWSLambda}
+  - {kind: node, id: svc-a2, label: "Service A2", icon: AWSLambda}
+  - {kind: node, id: svc-a3, label: "Service A3", icon: AWSLambda}
+  - {kind: node, id: svc-a4, label: "Service A4", icon: AWSLambda}
+  - {kind: node, id: svc-a5, label: "Service A5", icon: AWSLambda}
+  - {kind: edge, id: a1-to-a2, from: svc-a1, to: svc-a2, tags: [alpha]}
+  - {kind: edge, id: a2-to-a3, from: svc-a2, to: svc-a3, tags: [alpha]}
+  - {kind: edge, id: a3-to-a4, from: svc-a3, to: svc-a4, tags: [alpha]}
+  - {kind: edge, id: a4-to-a5, from: svc-a4, to: svc-a5, tags: [alpha]}
+  - {kind: node, id: svc-b1, label: "Service B1", icon: AWSLambda}
+  - {kind: node, id: svc-b2, label: "Service B2", icon: AWSLambda}
+  - {kind: node, id: svc-b3, label: "Service B3", icon: AWSLambda}
+  - {kind: node, id: svc-b4, label: "Service B4", icon: AWSLambda}
+  - {kind: node, id: svc-b5, label: "Service B5", icon: AWSLambda}
+  - {kind: edge, id: b1-to-b2, from: svc-b1, to: svc-b2, tags: [bravo]}
+  - {kind: edge, id: b2-to-b3, from: svc-b2, to: svc-b3, tags: [bravo]}
+  - {kind: edge, id: b3-to-b4, from: svc-b3, to: svc-b4, tags: [bravo]}
+  - {kind: edge, id: b4-to-b5, from: svc-b4, to: svc-b5, tags: [bravo]}
+  - {kind: node, id: svc-c1, label: "Service C1", icon: AWSLambda}
+  - {kind: node, id: svc-c2, label: "Service C2", icon: AWSLambda}
+  - {kind: node, id: svc-c3, label: "Service C3", icon: AWSLambda}
+  - {kind: node, id: svc-c4, label: "Service C4", icon: AWSLambda}
+  - {kind: node, id: svc-c5, label: "Service C5", icon: AWSLambda}
+  - {kind: edge, id: c1-to-c2, from: svc-c1, to: svc-c2, tags: [charlie]}
+  - {kind: edge, id: c2-to-c3, from: svc-c2, to: svc-c3, tags: [charlie]}
+  - {kind: edge, id: c3-to-c4, from: svc-c3, to: svc-c4, tags: [charlie]}
+  - {kind: edge, id: c4-to-c5, from: svc-c4, to: svc-c5, tags: [charlie]}
+  - {kind: node, id: svc-d1, label: "Service D1", icon: AWSLambda}
+  - {kind: node, id: svc-d2, label: "Service D2", icon: AWSLambda}
+  - {kind: node, id: svc-d3, label: "Service D3", icon: AWSLambda}
+  - {kind: node, id: svc-d4, label: "Service D4", icon: AWSLambda}
+  - {kind: node, id: svc-d5, label: "Service D5", icon: AWSLambda}
+  - {kind: edge, id: d1-to-d2, from: svc-d1, to: svc-d2, tags: [delta]}
+  - {kind: edge, id: d2-to-d3, from: svc-d2, to: svc-d3, tags: [delta]}
+  - {kind: edge, id: d3-to-d4, from: svc-d3, to: svc-d4, tags: [delta]}
+  - {kind: edge, id: d4-to-d5, from: svc-d4, to: svc-d5, tags: [delta]}
+  - {kind: node, id: svc-e1, label: "Service E1", icon: AWSLambda}
+  - {kind: node, id: svc-e2, label: "Service E2", icon: AWSLambda}
+  - {kind: node, id: svc-e3, label: "Service E3", icon: AWSLambda}
+  - {kind: node, id: svc-e4, label: "Service E4", icon: AWSLambda}
+  - {kind: node, id: svc-e5, label: "Service E5", icon: AWSLambda}
+  - {kind: edge, id: e1-to-e2, from: svc-e1, to: svc-e2, tags: [echo]}
+  - {kind: edge, id: e2-to-e3, from: svc-e2, to: svc-e3, tags: [echo]}
+  - {kind: edge, id: e3-to-e4, from: svc-e3, to: svc-e4, tags: [echo]}
+  - {kind: edge, id: e4-to-e5, from: svc-e4, to: svc-e5, tags: [echo]}
+  - {kind: node, id: svc-f1, label: "Service F1", icon: AWSLambda}
+  - {kind: node, id: svc-f2, label: "Service F2", icon: AWSLambda}
+  - {kind: node, id: svc-f3, label: "Service F3", icon: AWSLambda}
+  - {kind: node, id: svc-f4, label: "Service F4", icon: AWSLambda}
+  - {kind: node, id: svc-f5, label: "Service F5", icon: AWSLambda}
+  - {kind: edge, id: f1-to-f2, from: svc-f1, to: svc-f2, tags: [foxtrot]}
+  - {kind: edge, id: f2-to-f3, from: svc-f2, to: svc-f3, tags: [foxtrot]}
+  - {kind: edge, id: f3-to-f4, from: svc-f3, to: svc-f4, tags: [foxtrot]}
+  - {kind: edge, id: f4-to-f5, from: svc-f4, to: svc-f5, tags: [foxtrot]}
+  - {kind: node, id: svc-g1, label: "Service G1", icon: AWSLambda}
+  - {kind: node, id: svc-g2, label: "Service G2", icon: AWSLambda}
+  - {kind: node, id: svc-g3, label: "Service G3", icon: AWSLambda}
+  - {kind: node, id: svc-g4, label: "Service G4", icon: AWSLambda}
+  - {kind: node, id: svc-g5, label: "Service G5", icon: AWSLambda}
+  - {kind: edge, id: g1-to-g2, from: svc-g1, to: svc-g2, tags: [golf]}
+  - {kind: edge, id: g2-to-g3, from: svc-g2, to: svc-g3, tags: [golf]}
+  - {kind: edge, id: g3-to-g4, from: svc-g3, to: svc-g4, tags: [golf]}
+  - {kind: edge, id: g4-to-g5, from: svc-g4, to: svc-g5, tags: [golf]}
+  - {kind: node, id: svc-h1, label: "Service H1", icon: AWSLambda}
+  - {kind: node, id: svc-h2, label: "Service H2", icon: AWSLambda}
+  - {kind: node, id: svc-h3, label: "Service H3", icon: AWSLambda}
+  - {kind: node, id: svc-h4, label: "Service H4", icon: AWSLambda}
+  - {kind: node, id: svc-h5, label: "Service H5", icon: AWSLambda}
+  - {kind: edge, id: h1-to-h2, from: svc-h1, to: svc-h2, tags: [hotel]}
+  - {kind: edge, id: h2-to-h3, from: svc-h2, to: svc-h3, tags: [hotel]}
+  - {kind: edge, id: h3-to-h4, from: svc-h3, to: svc-h4, tags: [hotel]}
+  - {kind: edge, id: h4-to-h5, from: svc-h4, to: svc-h5, tags: [hotel]}

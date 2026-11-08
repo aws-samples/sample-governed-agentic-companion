@@ -23,13 +23,14 @@ governance-outcome footer) or a block notice (the original, possibly-violating t
 
 The **directive-vs-description** distinction (Tenet 11) blocks an agent *instructing* a
 fetch-and-execute while surfacing — not withholding — a legitimate *assessment* that merely
-mentions a `curl | bash`-shaped step. It fails safe toward surfacing, because the absolute
-no-execution guarantee comes from Tenet 1 + the permission layer, not this text scan.
+mentions a `curl | bash`-shaped step. It fails safe toward surfacing, because what stops execution
+is Tenet 1 plus the permission layer, which stops mutation where it is configured (Tenet 13), not
+this text scan.
 
 ## Layered enforcement (Tenet 13) — and honesty about it
 
 - **Mechanical (action layer):** read-only tools/credentials + a permission boundary that denies
-  mutating tool calls at invocation. **This is what guarantees no mutation.**
+  mutating tool calls at invocation. **This is the layer that stops mutation, where it is configured.**
 - **Observability (text layer):** the gate scans output text. **This is the honesty/audit signal,
   never treated as proof of what the agent actually did.**
 
@@ -49,15 +50,18 @@ tenets checked, the confidence, the sources, and the gate status in its footer.
 ## Integrity (Tenet 9)
 
 `PRINCIPLES.md` is SHA-256 baselined in [`../governance/integrity.yaml`](../governance/integrity.yaml)
-and verified at startup (`./run.sh status`). Changing the constitution requires the governance
+and verified by `./run.sh status` and by the unit test suite (run in CI on every push). Changing the constitution requires the governance
 handshake: state intent + justification, review the diff, then re-baseline with
 [`../scripts/rebaseline_integrity.py`](../scripts/rebaseline_integrity.py). Do **not** add a gate
 off switch — an unbypassable principle must not have a bypass.
 
 ## Knowledge safety (Tenet 8)
 
-Field corrections are staged, checked against locked constraints by a contradiction guard, and
-promoted by a human — never absorbed silently. Locked Tier-A constraints are never overlaid from
+Field corrections are staged and promoted by a human, not absorbed silently: promotion refuses any
+Tier A key, and the reviewer checks the candidate against the locked constraints before promoting
+it. Candidates stage in `.feedback/candidates.jsonl` after `scrub_or_reject`; `promote` records the
+human decision; a human applies the entry to the Tier B overlay. No freshness ledger is built. The
+constitution allows a future source-derived tier; the kit does not build one. Locked Tier-A constraints are never overlaid from
 S3 (the overlay allowlist is explicit; see [`../agents/kb_overlay.py`](../agents/kb_overlay.py)).
 
 ---
@@ -84,16 +88,19 @@ Changing the constitution (`PRINCIPLES.md`) is a deliberate, auditable act:
 - Tier-A (locked) constraints change only via code review — never from the S3 overlay.
 - Tier-B knowledge is overlay-eligible via an explicit allowlist; a curated overlay is promoted by
   a human to `kb/curated/overlay.json`.
-- Every write to any knowledge/memory store passes the data-protection guard (Tenet 6) — secrets
-  rejected, PII/proprietary redacted — so the shared KB stays customer-agnostic by construction.
+- `agents/data_protection.py` is a built, unit-tested guard (22 tests). Feedback staging calls
+  `scrub_or_reject` before it stores a request: a request with secret material is not staged, and
+  PII is redacted. The example engine writes no knowledge or memory, so a fork calls
+  `scrub_or_reject` on each write path it adds (Tenet 6).
 
 ## Monitoring & audit
 
 - **Logs:** CloudWatch Logs scoped to `/aws/bedrock-agentcore/runtimes/*`; set a retention policy
   for your compliance scope (SD-4 in [`SECURITY.md`](SECURITY.md)).
 - **Tracing:** X-Ray active tracing on the interceptor request path.
-- **The governance footer** on every response (trust zone, tenets checked, confidence, sources,
-  gate status) is the per-response audit record — surface it, don't strip it.
+- **The governance footer** on every passing response (trust zone, tenets checked, confidence,
+  sources, gate status) is the per-response audit record; a blocked response returns a block
+  notice instead. Surface it, don't strip it.
 - **Recommended alarms:** repeated inbound-auth failures, gateway target connection failures, and
   unusual `bedrock:InvokeModel` volume (a cost + misuse signal).
 
@@ -104,7 +111,7 @@ Changing the constitution (`PRINCIPLES.md`) is a deliberate, auditable act:
 | MCP runtime crash-loops after deploy | Read `/aws/bedrock-agentcore/runtimes/<mcp>-DEFAULT`; fix the container dependency; bump `image_tag`; re-apply |
 | Gateway target `FAILED` | Almost always the MCP runtime failing its boot/health check — fix the runtime, then re-apply (the target recreates) |
 | Token expired / 401 in the IDE | The PKCE flow auto-refreshes; for the Bearer path re-run `frontdoor/gateway_token.py` |
-| Rotate the M2M secret | Manual per SD-5 until a rotation Lambda is supplied; see the terraform README rotation section |
+| Rotate the M2M secret | The kit creates no hand-managed secret; the gateway's credential provider holds the client secret (SD-5 in [`SECURITY.md`](SECURITY.md)). A fork that supplies `gateway_m2m_secret_arn` owns that secret's rotation |
 | Stop all cost | `terraform destroy` (human-run) — see [`COST.md`](COST.md) |
 
 ## Security standards this kit implies
