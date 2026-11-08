@@ -20,6 +20,7 @@ without the runtime SDK; the SDK is a deploy-time dependency (see requirements.t
 
 import logging
 import os
+import re
 import sys
 from pathlib import Path
 
@@ -60,16 +61,57 @@ def _extract_request(payload: dict) -> tuple[str, str]:
     return (prompt or "").strip(), environment
 
 
+_ACTION_SLUG = re.compile(r"^[a-z_]{1,32}$")
+
+
+def _str_field(payload: dict, key: str) -> str:
+    value = (payload or {}).get(key, "")
+    return value if isinstance(value, str) else ""
+
+
 def handle_invocation(payload: dict, session_id: str = "") -> dict:
     """Core, SDK-independent handler — unit-testable without the AgentCore SDK.
-
     Returns the GATED engine response in a small envelope. Never returns un-gated text.
+
+    `action` missing or "ask": today's behaviour, byte-identical. `action: "diagram"`: the
+    diagram specialist (forced), with `title`/`name` validated by its label policy and
+    `include_artifacts` (a JSON boolean; anything else is false), and `planner` ("" or
+    "deterministic"; anything else is ""; it can only downgrade the planner). The envelope then
+    carries `diagram` (view 1's artefact bundle) plus `diagram_views` (views 2..n, when there
+    are several) when include_artifacts is true, else `diagram_manifest` (names, sizes and
+    short hashes only; `views` per view for a multi-view answer); neither when the gate
+    blocked or nothing rendered.
     """
     from agents.orchestrator import Orchestrator  # imported lazily (engine on sys.path)
-
     prompt, environment = _extract_request(payload)
     if not prompt:
         return {"response": "No prompt provided.", "gated": True}
+    action = (payload or {}).get("action")
+    if action not in (None, "ask"):
+        if action == "diagram":
+            include = (payload or {}).get("include_artifacts") is True
+            planner = "deterministic" if _str_field(payload, "planner") == "deterministic" else ""
+            orch = Orchestrator()
+            text, bundles = orch.handle_with_views(
+                prompt, environment, force="diagram", deliver=include,
+                title=_str_field(payload, "title"), name=_str_field(payload, "name"),
+                planner=planner)
+            out = {"response": text, "gated": True}
+            if include and bundles:
+                out["diagram"] = bundles[0]
+                if len(bundles) > 1:
+                    out["diagram_views"] = bundles[1:]
+            elif not include and orch.last_manifest is not None:
+                out["diagram_manifest"] = orch.last_manifest
+            logger.info("[gac] handled diagram invocation (session=%s, env=%s)",
+                        session_id or "-", environment)
+            return out
+        from agents.governance_gate import gate_output
+        slug = action if isinstance(action, str) and _ACTION_SLUG.match(action) else ""
+        text = (f"Unknown action '{slug}'; supported: ask, diagram." if slug
+                else "Unknown action; supported: ask, diagram.")
+        return {"response": gate_output(text, agent="runtime", request=prompt,
+                                        environment=environment), "gated": True}
     response = Orchestrator().handle(prompt, environment=environment)
     logger.info("[gac] handled invocation (session=%s, env=%s)", session_id or "-", environment)
     return {"response": response, "gated": True}
