@@ -303,8 +303,8 @@ GAC_COGNITO_PASSWORD=<your pool user password — do not commit>
 ```
 
 ## Diagrams: landing files needs the stdio bridge
-> **Preview.** The diagram specialist behind `draw_diagram` is a preview. It is held out of any
-> public release (for example a public samples port) until the owner accepts its redesign.
+> **Preview.** The diagram specialist behind `draw_diagram` is a preview and is not yet
+> production-ready; a redesign is planned (agent-to-agent knowledge gathering and an intent-aware single-view layout).
 > Current limits: it does not collaborate with peer specialists or the orchestrator (it reads
 > only their hand-authored `diagram_facts`); the deterministic keyword planner is the default and
 > largely ignores intent such as "single view", "both" or "public"; the view splitter overrides

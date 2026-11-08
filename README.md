@@ -80,7 +80,7 @@ notice instead.
 > ```
 >
 > **Ask for a diagram (preview).** The diagram specialist is a preview with known limits (see
-> "What you get") and is held out of any public release until its redesign is accepted. Download the AWS Architecture Icons Asset Package yourself, then:
+> "What you get"), is not yet production-ready, and a redesign is planned (agent-to-agent knowledge gathering and an intent-aware single-view layout). Download the AWS Architecture Icons Asset Package yourself, then:
 > ```bash
 > ./run.sh diagram-assets --zip /path/to/the-asset-package.zip   # local, gitignored catalog
 > ./run.sh diagram "draw our private network path"               # writes outputs/diagrams/private-request-path/
@@ -131,8 +131,8 @@ human-decides model so you can rely on it.
   — with no mode flag to turn it off.
 - **Example specialists** over a common `BaseAgent` (measured confidence + grounding sources).
 - **A Diagram specialist, preview** (`agents/specialists/diagram_specialist.py`, registered by
-  default). Preview status: it is held out of any public release (for example a public samples
-  port) until the owner accepts its redesign. Current limits: it does not collaborate with peer
+  default). Preview status: it is not yet production-ready, and
+  a redesign is planned (agent-to-agent knowledge gathering and an intent-aware single-view layout). Current limits: it does not collaborate with peer
   specialists or the orchestrator (it reads only their hand-authored `diagram_facts`, not their
   wider knowledge); the deterministic keyword planner is the default and largely ignores intent
   ("single view", "both", "public"); the view splitter overrides an explicit single view; and

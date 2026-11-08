@@ -8,9 +8,9 @@ semantic versioning (MAJOR.MINOR.PATCH), tracked in `config.yaml` (`system.versi
 - **MINOR** — new capabilities added in a backward-compatible way.
 - **PATCH** — fixes and documentation corrections that add/remove no capability.
 ## [Unreleased]
-- **Diagram specialist is a preview.** The owner tested it and did not accept it. It stays out of
-  any public release (for example a public samples port) until the owner accepts its redesign
-  into a collaborating specialist. Current limits:
+- **Diagram specialist is a preview.** It is included as a preview and is not yet
+  production-ready; a redesign into a collaborating specialist is planned (agent-to-agent
+  knowledge gathering and an intent-aware single-view layout). Current limits:
   - No real peer collaboration: it reads only each specialist's hand-authored `diagram_facts`
     slice. It does not consult peer specialists or the orchestrator, or their wider knowledge
     (deployment policy, both network modes, identity and entitlement, front doors, the
