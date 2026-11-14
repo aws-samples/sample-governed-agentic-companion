@@ -10,7 +10,7 @@
 # / arm64, the Chainguard image target). Bump deliberately after validating advisories.
 bedrock-agentcore==1.18.1   # >= 1.18.1 required: CVE-2026-16796 fixed in 1.18.1
 aws-opentelemetry-distro==0.22.0   # pins opentelemetry 1.45.1: CVE-2026-114603 (api), CVE-2026-116694 (propagator-jaeger)
-opentelemetry-api==1.45.1
+opentelemetry-api==1.45.2
 
 # MCP server SDK (this runtime's protocol face) + ASGI server for the STATELESS app.
 # Must stay >= 1.30.0 and < 2: CVE-2025-53365/-53366/-66416 (1.23.0); CVE-2026-52870 (1.27);
